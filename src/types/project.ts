@@ -18,69 +18,51 @@ export interface CanvasSize {
 // 预设画布尺寸
 export const defaultCanvasSizes: CanvasSize[] = [
   {
-    id: 'a4-portrait',
+    id: 'canvas_a4_portrait',
     name: 'A4 竖版',
-    width: 595,
-    height: 842,
-    aspectRatio: '√2:1',
-    description: '标准A4纸张，适合打印',
+    width: 210,
+    height: 297,
+    aspectRatio: '3:4',
+    description: 'A4纸张竖版尺寸',
     category: 'print',
     isPopular: true
   },
   {
-    id: 'a4-landscape',
+    id: 'canvas_a4_landscape',
     name: 'A4 横版',
-    width: 842,
-    height: 595,
-    aspectRatio: '√2:1',
-    description: '横向A4，适合风景展示',
+    width: 297,
+    height: 210,
+    aspectRatio: '4:3',
+    description: 'A4纸张横版尺寸',
     category: 'print'
   },
   {
-    id: 'square-large',
-    name: '方形大版',
-    width: 800,
-    height: 800,
+    id: 'canvas_square',
+    name: '正方形',
+    width: 300,
+    height: 300,
     aspectRatio: '1:1',
-    description: '正方形格式，平衡美观',
+    description: '正方形画布',
     category: 'standard',
     isPopular: true
   },
   {
-    id: 'landscape-16-9',
-    name: '宽屏 16:9',
-    width: 1600,
-    height: 900,
+    id: 'canvas_16_9',
+    name: '16:9 横版',
+    width: 400,
+    height: 225,
     aspectRatio: '16:9',
-    description: '宽屏比例，适合现代显示',
+    description: '宽屏横版比例',
     category: 'standard',
     isPopular: true
   },
   {
-    id: 'portrait-4-3',
-    name: '竖版 4:3',
-    width: 600,
-    height: 800,
-    aspectRatio: '4:3',
-    description: '传统相片比例',
-    category: 'standard'
-  },
-  {
-    id: 'instagram-square',
-    name: 'Instagram 方形',
-    width: 1080,
-    height: 1080,
-    aspectRatio: '1:1',
-    description: '适合社交媒体分享',
-    category: 'social'
-  },
-  {
-    id: 'instagram-story',
-    name: 'Instagram 故事',
-    width: 1080,
-    height: 1920,
+    id: 'canvas_9_16',
+    name: '9:16 竖版',
+    width: 225,
+    height: 400,
     aspectRatio: '9:16',
-    description: '竖屏故事格式',
+    description: '手机竖版比例',
     category: 'social'
   }
 ];

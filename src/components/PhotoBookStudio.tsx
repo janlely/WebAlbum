@@ -57,8 +57,26 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
 
   // 初始化加载数据
   useEffect(() => {
-    loadInitialData();
+    initializeApp();
   }, []);
+
+  const initializeApp = async () => {
+    try {
+      // 在API模式下，确保设置用户ID
+      if (StorageService.getStorageMode() === 'api') {
+        const { apiService } = await import('../services/apiService');
+        // 设置默认用户ID (在真实应用中应该从认证系统获取)
+        const userId = localStorage.getItem('user_id') || 'demo_user';
+        localStorage.setItem('user_id', userId);
+        apiService.setUserId(userId);
+        console.log('API模式已初始化，用户ID:', userId);
+      }
+      
+      await loadInitialData();
+    } catch (error) {
+      console.error('初始化应用失败:', error);
+    }
+  };
 
   const loadInitialData = async () => {
     try {
@@ -144,32 +162,69 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
   // 创建新相册
   const createNewAlbum = useCallback(async (albumData: Partial<Album>) => {
     try {
-      const newAlbum: Album = {
-        id: `album_${Date.now()}`,
-        name: albumData.name || '新相册',
-        description: albumData.description,
-        canvasSize: albumData.canvasSize!,
-        theme: albumData.theme!,
-        settings: {
-          showGrid: true,
-          snapToGrid: true,
-          gridSize: 10,
-          autoSave: true,
-          autoSaveInterval: 30
-        },
-        pageCount: 0,
-        createTime: Date.now(),
-        updateTime: Date.now(),
-        lastEditTime: Date.now(),
-        tags: [],
-        category: 'default'
-      };
+      // 检查存储模式
+      const storageMode = StorageService.getStorageMode();
       
-      await StorageService.saveAlbum(newAlbum);
+      let newAlbum: Album;
       
-      // 更新状态
-      setAlbums(prev => [newAlbum, ...prev]);
-      await selectAlbum(newAlbum.id);
+      if (storageMode === 'api') {
+        // API模式：让后端生成ID和其他字段
+        const albumToCreate = {
+          name: albumData.name || '新相册',
+          description: albumData.description,
+          canvasSize: albumData.canvasSize!,
+          theme: albumData.theme!,
+          settings: {
+            showGrid: true,
+            snapToGrid: true,
+            gridSize: 10,
+            autoSave: true,
+            autoSaveInterval: 30
+          },
+          tags: [],
+          category: 'default'
+        };
+        
+        // 调用StorageService，它会自动使用API并返回创建的相册
+        const savedAlbum = await StorageService.saveAlbum(albumToCreate as Album);
+        
+        // 重新加载相册列表以获取最新数据
+        const updatedAlbums = await StorageService.getAlbums();
+        setAlbums(updatedAlbums);
+        
+        // 选择新创建的相册
+        if (savedAlbum) {
+          await selectAlbum(savedAlbum.id);
+        }
+      } else {
+        // 本地存储模式：客户端生成ID
+        newAlbum = {
+          id: `album_${Date.now()}`,
+          name: albumData.name || '新相册',
+          description: albumData.description,
+          canvasSize: albumData.canvasSize!,
+          theme: albumData.theme!,
+          settings: {
+            showGrid: true,
+            snapToGrid: true,
+            gridSize: 10,
+            autoSave: true,
+            autoSaveInterval: 30
+          },
+          pageCount: 0,
+          createTime: Date.now(),
+          updateTime: Date.now(),
+          lastEditTime: Date.now(),
+          tags: [],
+          category: 'default'
+        };
+        
+        const savedAlbum = await StorageService.saveAlbum(newAlbum);
+        
+        // 更新状态
+        setAlbums(prev => [savedAlbum, ...prev]);
+        await selectAlbum(savedAlbum.id);
+      }
       
       showSaveMessage('新相册创建成功');
     } catch (error) {
