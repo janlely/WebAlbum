@@ -69,7 +69,7 @@ const PhotoBookEditor: React.FC<PhotoBookEditorProps> = ({ template, onBackToGal
   };
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col min-h-screen bg-gray-50">
       <Toolbar 
         templateName={template.name}
         currentPage={currentPageIndex + 1}
