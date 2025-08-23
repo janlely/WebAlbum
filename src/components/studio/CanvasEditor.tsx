@@ -48,7 +48,10 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
       const scaleX = maxWidth / album.canvasSize.width;
       const scaleY = maxHeight / album.canvasSize.height;
       
-      const scale = Math.min(scaleX, scaleY, 1); // 最大不超过1:1
+      // 将默认的100%设置为原来200%的大小
+      // 这样A4页面在编辑区域中会显示得更大，更适合编辑
+      const baseScale = Math.min(scaleX, scaleY) * 2;
+      const scale = Math.min(baseScale, 2.5); // 最大不超过2.5倍
       setCanvasScale(scale);
     };
 

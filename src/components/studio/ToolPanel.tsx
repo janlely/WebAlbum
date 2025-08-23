@@ -12,6 +12,7 @@ interface ToolPanelProps {
   editorState: { selectedElementIds: string[] };
   onPanelStateChange: (state: ToolPanelState) => void;
   onCreatePage: (templateId?: string) => void;
+  onApplyTemplate: (templateId: string) => void;
   onAlbumChange: (album: Album) => void;
   onPageChange: (page: AlbumPage) => void;
 }
@@ -23,6 +24,7 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
   editorState,
   onPanelStateChange,
   onCreatePage,
+  onApplyTemplate,
   onAlbumChange,
   onPageChange
 }) => {
@@ -322,42 +324,60 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
     <div className="space-y-4">
       <div>
         <h3 className="text-sm font-medium text-gray-900 mb-3">页面模板</h3>
-        <p className="text-xs text-gray-500 mb-4">选择模板创建新页面</p>
+        <p className="text-xs text-gray-500 mb-4">
+          {page ? '选择模板应用到当前页面' : '选择模板创建新页面'}
+        </p>
       </div>
 
       <div className="space-y-3">
         {defaultPageTemplates.map((template) => (
-          <button
-            key={template.id}
-            onClick={() => onCreatePage(template.id)}
-            className="w-full p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-all text-left group"
-          >
-            <div className="flex items-start space-x-3">
-              <img
-                src={template.preview}
-                alt={template.name}
-                className="w-12 h-12 rounded object-cover flex-shrink-0"
-              />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium group-hover:text-blue-600">
-                  {template.name}
-                </div>
-                <div className="text-xs text-gray-500 mt-1 line-clamp-2">
-                  {template.description}
-                </div>
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {template.tags.slice(0, 3).map((tag) => (
-                    <span
-                      key={tag}
-                      className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded"
-                    >
-                      {tag}
-                    </span>
-                  ))}
+          <div key={template.id} className="relative">
+            <div className="w-full p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-all">
+              <div className="flex items-start space-x-3">
+                <img
+                  src={template.preview}
+                  alt={template.name}
+                  className="w-12 h-12 rounded object-cover flex-shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900">
+                    {template.name}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1 line-clamp-2">
+                    {template.description}
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {template.tags.slice(0, 3).map((tag) => (
+                      <span
+                        key={tag}
+                        className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
+              
+              {/* 操作按钮 */}
+              <div className="flex gap-2 mt-3">
+                {page && (
+                  <button
+                    onClick={() => onApplyTemplate(template.id)}
+                    className="flex-1 px-3 py-1.5 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                  >
+                    应用模板
+                  </button>
+                )}
+                <button
+                  onClick={() => onCreatePage(template.id)}
+                  className="flex-1 px-3 py-1.5 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
+                >
+                  新建页面
+                </button>
+              </div>
             </div>
-          </button>
+          </div>
         ))}
       </div>
     </div>

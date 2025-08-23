@@ -7,8 +7,10 @@ import type {
   AlbumPage, 
   EditorState, 
   ToolPanelState, 
-  ProjectPanelState 
+  ProjectPanelState,
+  PageElement
 } from '../types';
+import { defaultPageTemplates } from '../types';
 
 // 组件导入
 import ProjectPanel from './studio/ProjectPanel';
@@ -244,7 +246,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
         name: `页面 ${albumPages.length + 1}`,
         order: albumPages.length,
         templateId,
-        elements: [],
+        elements: templateId ? generateElementsFromTemplate(templateId) : [],
         createTime: Date.now(),
         updateTime: Date.now()
       };
@@ -263,6 +265,76 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       showSaveMessage('创建页面失败', true);
     }
   }, [currentAlbum, albumPages]);
+
+  // 应用模板到当前页面
+  const applyTemplate = useCallback(async (templateId: string) => {
+    if (!currentPage) return;
+    
+    try {
+      const updatedPage: AlbumPage = {
+        ...currentPage,
+        templateId,
+        elements: generateElementsFromTemplate(templateId),
+        updateTime: Date.now()
+      };
+      
+      await StorageService.savePage(updatedPage);
+      setCurrentPage(updatedPage);
+      
+      // 更新页面列表中的页面
+      setAlbumPages(prev => 
+        prev.map(p => p.id === updatedPage.id ? updatedPage : p)
+      );
+      
+      showSaveMessage('模板应用成功');
+    } catch (error) {
+      console.error('应用模板失败:', error);
+      showSaveMessage('应用模板失败', true);
+    }
+  }, [currentPage]);
+
+  // 从模板生成页面元素
+  const generateElementsFromTemplate = useCallback((templateId: string): PageElement[] => {
+    const template = defaultPageTemplates.find((t: any) => t.id === templateId);
+    if (!template) return [];
+
+    const elements: PageElement[] = [];
+
+    // 添加照片框架
+    template.photoFrames.forEach((frame: any, index: number) => {
+      elements.push({
+        id: `photo_${Date.now()}_${index}`,
+        type: 'photo',
+        x: frame.x,
+        y: frame.y,
+        width: frame.width,
+        height: frame.height,
+        zIndex: frame.zIndex || index + 1,
+        url: '', // 空的，等待用户添加图片
+        placeholder: frame.placeholder || '点击添加图片'
+      });
+    });
+
+    // 添加文本框架
+    template.textFrames.forEach((frame: any, index: number) => {
+      elements.push({
+        id: `text_${Date.now()}_${index}`,
+        type: 'text',
+        x: frame.x,
+        y: frame.y,
+        width: frame.width,
+        height: frame.height,
+        zIndex: frame.zIndex || (template.photoFrames.length + index + 1),
+        content: frame.placeholder || '点击添加文本',
+        fontSize: frame.fontSize === 'large' ? 24 : frame.fontSize === 'medium' ? 18 : 14,
+        textAlign: frame.textAlign || 'left',
+        fontWeight: frame.fontWeight || 'normal',
+        color: '#333333'
+      });
+    });
+
+    return elements;
+  }, []);
 
   // 保存页面
   const savePage = useCallback(async (page: AlbumPage) => {
@@ -533,9 +605,9 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
   }, [currentAlbum]);
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
+    <div className="h-full w-full bg-gray-50 flex flex-col">
       {/* 顶部工具栏 */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center flex-shrink-0">
         <div className="flex items-center space-x-4">
           <button
             onClick={onBackToHome}
@@ -600,9 +672,9 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       </div>
 
       {/* 主要工作区域 - 三栏布局 */}
-      <div className="flex-1 flex">
+      <div className="flex-1 flex min-h-0">
         {/* 左侧：项目管理面板 */}
-        <div className={`bg-white border-r border-gray-200 transition-all duration-300 ${
+        <div className={`bg-white border-r border-gray-200 transition-all duration-300 flex flex-col ${
           projectPanelState.isCollapsed ? 'w-12' : 'w-64'
         }`}>
           <ProjectPanel
@@ -628,7 +700,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
         </div>
 
         {/* 中间：画布编辑区 */}
-        <div className="flex-1 bg-gray-100">
+        <div className="flex-1 bg-gray-100 flex flex-col min-w-0">
           <CanvasEditor
             album={currentAlbum}
             page={currentPage}
@@ -639,7 +711,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
         </div>
 
         {/* 右侧：工具面板 */}
-        <div className={`bg-white border-l border-gray-200 transition-all duration-300 ${
+        <div className={`bg-white border-l border-gray-200 transition-all duration-300 flex flex-col ${
           toolPanelState.isCollapsed ? 'w-12' : 'w-80'
         }`}>
           <ToolPanel
@@ -649,6 +721,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
             editorState={editorState}
             onPanelStateChange={setToolPanelState}
             onCreatePage={createNewPage}
+            onApplyTemplate={applyTemplate}
             onAlbumChange={setCurrentAlbum}
             onPageChange={setCurrentPage}
           />

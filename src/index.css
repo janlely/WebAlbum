@@ -5,8 +5,9 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
   margin: 0;
+  padding: 0;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   line-height: 1.5;
   color: #333;
@@ -15,6 +16,18 @@ body {
 
 #root {
   min-height: 100vh;
+}
+
+/* 编辑模式下的样式 */
+html.editing-mode, 
+html.editing-mode body {
+  height: 100vh;
+  overflow: hidden; /* 防止页面级别的滚动 */
+}
+
+html.editing-mode #root {
+  height: 100vh;
+  overflow: hidden; /* 防止根元素滚动 */
 }
 
 /* 确保基础的间距和排版 */
