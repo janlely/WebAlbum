@@ -1,23 +1,25 @@
 // 数据库抽象层类型定义
 
-export interface DatabaseConfig {
-  type: 'sqlite' | 'postgresql' | 'mysql';
-  path?: string; // SQLite
-  host?: string; // PostgreSQL/MySQL
-  port?: number; // PostgreSQL/MySQL
-  database?: string; // PostgreSQL/MySQL
-  username?: string; // PostgreSQL/MySQL
-  password?: string; // PostgreSQL/MySQL
-}
-
+// 基础数据库连接接口
 export interface DatabaseConnection {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
-  query(sql: string, params?: any[]): Promise<any[]>;
+  query<T = any>(sql: string, params?: any[]): Promise<T[]>;
   execute(sql: string, params?: any[]): Promise<{ affectedRows: number; insertId?: number }>;
   beginTransaction(): Promise<void>;
   commit(): Promise<void>;
   rollback(): Promise<void>;
+  close?: () => Promise<void>; // 兼容旧接口
+}
+
+export interface DatabaseConfig {
+  type: 'sqlite' | 'postgresql' | 'mysql';
+  path?: string;
+  host?: string;
+  port?: number;
+  database?: string;
+  username?: string;
+  password?: string;
 }
 
 // 兼容旧接口

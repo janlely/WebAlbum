@@ -205,7 +205,7 @@ export class AlbumService {
       throw new Error('ID不能为空');
     }
 
-    // UUID v4格式验证（简化）
+    // 完整的UUID v4验证
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(id)) {
       throw new Error('无效的ID格式');

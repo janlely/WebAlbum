@@ -1,6 +1,8 @@
 // 用户上下文中间件
 
 import { Request, Response, NextFunction } from 'express';
+import { DatabaseManager } from '../database/factory';
+import { UserDAO } from '../models/UserDAO';
 
 // 扩展Request类型以包含用户信息
 declare global {
@@ -12,6 +14,7 @@ declare global {
         username: string;
         displayName: string;
         email?: string;
+        avatarUrl?: string;
       };
     }
   }
@@ -29,7 +32,8 @@ export const userContextMiddleware = (req: Request, res: Response, next: NextFun
     // 3. userId 查询参数
     // 4. 默认用户
 
-    let userId: string = 'default-user'; // 默认用户
+    // 开发环境使用有效的UUID v4格式测试用户
+    let userId = process.env.NODE_ENV === 'production' ? '' : 'c7b4df11-d82b-4cd8-88f8-622dfcd00c4c';
 
     // 从请求头获取用户ID
     const headerUserId = req.headers['x-user-id'] as string;
@@ -114,14 +118,18 @@ export const loadUserInfoMiddleware = async (req: Request, res: Response, next: 
       return;
     }
 
-    // TODO: 从数据库加载用户信息
-    // 这里暂时使用模拟数据
-    if (req.userId === 'default-user') {
+    const dbManager = DatabaseManager.getInstance();
+    const connection = await dbManager.getConnection();
+    const userDAO = new UserDAO(connection);
+    
+    const user = await userDAO.findById(req.userId);
+    if (user) {
       req.userInfo = {
-        id: 'default-user',
-        username: 'default',
-        displayName: '默认用户',
-        email: 'default@webalbum.local'
+        id: user.id,
+        username: user.username,
+        displayName: user.username, // 暂时使用用户名作为显示名
+        email: user.email,
+        avatarUrl: user.avatar_url // 映射数据库字段到驼峰命名
       };
     }
 

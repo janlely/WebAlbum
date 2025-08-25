@@ -5,7 +5,7 @@ import type { CanvasSize, Theme } from './index';
 // 页面元素基础类型
 export interface BaseElement {
   id: string;
-  type: 'photo' | 'text' | 'shape';
+  type: 'photo' | 'text' | 'shape' | 'decoration';
   x: number; // 相对位置 0-1
   y: number; // 相对位置 0-1
   width: number; // 相对宽度 0-1
@@ -147,8 +147,8 @@ export interface Album {
   description?: string;
   
   // 画布设置
-  canvasSize: CanvasSize;
-  theme: Theme;
+  canvasSizeId: string;
+  themeId: string;
   
   // 相册设置
   settings: {

@@ -2,8 +2,7 @@
 
 import type { Album, AlbumPage, AlbumSummary, PageSummary } from '../types/album';
 
-const API_BASE_URL = 'http://localhost:3001/api';
-const DEFAULT_USER_ID = 'default-user';
+const API_BASE_URL = 'http://localhost:9999/api';
 
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -15,6 +14,14 @@ export interface ApiResponse<T = any> {
     total: number;
     totalPages: number;
   };
+}
+
+// 添加公共请求方法类型
+export interface IApiService {
+  get<T = any>(url: string): Promise<ApiResponse<T>>;
+  post<T = any>(url: string, body?: any): Promise<ApiResponse<T>>;
+  put<T = any>(url: string, body?: any): Promise<ApiResponse<T>>;
+  delete<T = any>(url: string): Promise<ApiResponse<T>>;
 }
 
 export interface UploadResponse {
@@ -49,23 +56,34 @@ export interface ExportTask {
   error?: string;
 }
 
-class ApiService {
-  private baseUrl: string;
-  private userId: string;
+class ApiService implements IApiService {
+  // 实现公共请求接口
+  async get<T = any>(url: string): Promise<ApiResponse<T>> {
+    return this.request<T>(url);
+  }
 
+  async post<T = any>(url: string, body?: any): Promise<ApiResponse<T>> {
+    return this.request<T>(url, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+  }
+
+  async put<T = any>(url: string, body?: any): Promise<ApiResponse<T>> {
+    return this.request<T>(url, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    });
+  }
+
+  async delete<T = any>(url: string): Promise<ApiResponse<T>> {
+    return this.request<T>(url, {
+      method: 'DELETE'
+    });
+  }
+  private baseUrl: string;
   constructor() {
     this.baseUrl = API_BASE_URL;
-    this.userId = DEFAULT_USER_ID;
-  }
-
-  // 设置用户ID
-  setUserId(userId: string): void {
-    this.userId = userId;
-  }
-
-  // 获取当前用户ID
-  getUserId(): string {
-    return this.userId;
   }
 
   // 基础请求方法
@@ -77,7 +95,6 @@ class ApiService {
     
     const defaultHeaders = {
       'Content-Type': 'application/json',
-      'X-User-Id': this.userId,
     };
 
     const config: RequestInit = {
@@ -115,8 +132,7 @@ class ApiService {
     const config: RequestInit = {
       method: 'POST',
       headers: {
-        'X-User-Id': this.userId,
-      },
+        },
       body: formData,
     };
 
@@ -278,8 +294,8 @@ class ApiService {
       name: page.name,
       order: page.order,
       thumbnail: this.generatePageThumbnail(page),
-      updateTime: new Date(page.updatedAt).getTime(),
-      elementCount: page.elements?.length || 0,
+      updateTime: Date.now(),
+      elementCount: 0,
     }));
   }
 
@@ -351,9 +367,7 @@ class ApiService {
   async downloadExportFile(taskId: string): Promise<void> {
     const url = `${this.baseUrl}/export/download/${taskId}`;
     const response = await fetch(url, {
-      headers: {
-        'X-User-Id': this.userId,
-      },
+      headers: {},
     });
 
     if (!response.ok) {

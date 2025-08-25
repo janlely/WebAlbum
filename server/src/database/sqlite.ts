@@ -59,6 +59,11 @@ export class SQLiteConnection implements DatabaseConnection {
     });
   }
 
+  // 兼容旧接口的close方法
+  async close(): Promise<void> {
+    return this.disconnect();
+  }
+
   async query(sql: string, params: any[] = []): Promise<any[]> {
     return new Promise((resolve, reject) => {
       if (!this.db) {

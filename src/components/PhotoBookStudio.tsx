@@ -67,11 +67,8 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
     try {
       // 确保设置用户ID
       const { apiService } = await import('../services/apiService');
-      // 设置默认用户ID (在真实应用中应该从认证系统获取)
-      const userId = localStorage.getItem('user_id') || 'demo_user';
-      localStorage.setItem('user_id', userId);
-      apiService.setUserId(userId);
-      console.log('API服务已初始化，用户ID:', userId);
+      // 用户认证将由后端会话管理
+      console.log('API服务已初始化');
       
       // 清理旧的本地数据，避免ID格式冲突
       await clearLegacyLocalData();
@@ -189,21 +186,19 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       let newAlbum: Album;
       
       // 让后端生成ID和其他字段
-        const albumToCreate = {
-          name: albumData.name || '新相册',
-          description: albumData.description,
-          canvasSize: albumData.canvasSize!,
-          theme: albumData.theme!,
-          settings: {
-            showGrid: true,
-            snapToGrid: true,
-            gridSize: 10,
-            autoSave: true,  // 保留兼容性，但实际使用实时保存
-            autoSaveInterval: 5  // 减少到5秒（虽然不再使用）
-          },
-          tags: [],
-          category: 'default'
-        };
+          const albumToCreate = {
+            name: albumData.name || '新相册',
+            description: albumData.description || '',
+            canvasSizeId: albumData.canvasSize?.id || '',
+            themeId: albumData.theme?.id || '',
+            settings: JSON.stringify({
+              showGrid: true,
+              snapToGrid: true,
+              gridSize: 10
+            }),
+            tags: JSON.stringify([]),
+            category: 'default'
+          };
         
         // 调用StorageService，它会自动使用API并返回创建的相册
         const savedAlbum = await StorageService.saveAlbum(albumToCreate as Album);
