@@ -1,8 +1,12 @@
 // 右侧工具面板
 
 import React, { useRef } from 'react';
-import type { Album, AlbumPage, ToolPanelState, PageElement, PhotoElement, TextElement, ShapeElement } from '../../types';
-import { defaultCanvasSizes, defaultThemes, defaultPageTemplates } from '../../types';
+import type { Album, AlbumPage, ToolPanelState, PageElement, PhotoElement, TextElement, ShapeElement, DecorationElement, PhotoShapeType } from '../../types';
+import { defaultThemes, defaultPageTemplates } from '../../types';
+import { getPhotoShapeOptions } from '../../utils/photoShapes';
+import { getDecorationsGrouped, getDecorationTemplate } from '../../utils/decorationTemplates';
+import { apiService } from '../../services/apiService';
+import { generateUUID } from '../../utils/uuid';
 import AlignmentTools from './AlignmentTools';
 
 interface ToolPanelProps {
@@ -30,23 +34,89 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 添加照片元素
-  const handleAddPhoto = (file?: File) => {
+  // 添加空的照片元素（占位符）
+  const handleAddPhotoPlaceholder = (shape: PhotoShapeType = 'rectangle') => {
     if (!page) return;
 
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
+    // 基于1:1正方形坐标系的初始尺寸（渲染时会根据画布比例校正）
+    const getInitialSize = (shapeType: PhotoShapeType) => {
+      switch (shapeType) {
+        case 'circle':
+        case 'star':
+        case 'hexagon':
+        case 'heart':
+        case 'diamond':
+          // 对称形状：在1:1坐标系中为正方形，渲染时保持圆形
+          return { width: 0.25, height: 0.25 };
+        case 'triangle':
+          // 三角形：稍高一些
+          return { width: 0.25, height: 0.3 };
+        case 'rectangle':
+        default:
+          // 矩形等其他形状
+          return { width: 0.3, height: 0.25 };
+      }
+    };
+
+    const { width, height } = getInitialSize(shape);
+
+    const photoElement: PhotoElement = {
+      id: generateUUID(),
+      type: 'photo',
+      x: 0.1,
+      y: 0.1,
+      width,
+      height,
+      zIndex: page.elements.length + 1,
+      url: '', // 空的，显示占位符
+      placeholder: '双击添加图片',
+      shape: shape
+    };
+
+    const updatedPage = {
+      ...page,
+      elements: [...page.elements, photoElement],
+      updateTime: Date.now()
+    };
+
+    onPageChange(updatedPage);
+  };
+
+  // 处理文件上传（用于已有图片元素的替换）
+  const handlePhotoUpload = async (file: File, elementId?: string) => {
+    if (!page) return;
+
+    try {
+      console.log('ToolPanel上传图片:', { name: file.name, type: file.type, size: file.size });
+      
+      // 上传到后台服务器
+      const uploadResponse = await apiService.uploadImage(file);
+      console.log('ToolPanel图片上传成功:', { url: uploadResponse.url });
+
+      if (elementId) {
+        // 更新现有图片元素
+        const updatedPage = {
+          ...page,
+          elements: page.elements.map(element => 
+            element.id === elementId && element.type === 'photo'
+              ? { ...element, url: uploadResponse.url, originalName: uploadResponse.originalName }
+              : element
+          ),
+          updateTime: Date.now()
+        };
+        onPageChange(updatedPage);
+      } else {
+        // 创建新的图片元素
         const photoElement: PhotoElement = {
-          id: `photo_${Date.now()}`,
+          id: generateUUID(),
           type: 'photo',
           x: 0.1,
           y: 0.1,
           width: 0.3,
           height: 0.3,
           zIndex: page.elements.length + 1,
-          url: e.target?.result as string,
-          originalName: file.name
+          url: uploadResponse.url,
+          originalName: uploadResponse.originalName
         };
 
         const updatedPage = {
@@ -54,13 +124,11 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
           elements: [...page.elements, photoElement],
           updateTime: Date.now()
         };
-
         onPageChange(updatedPage);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      // 打开文件选择器
-      fileInputRef.current?.click();
+      }
+    } catch (error) {
+      console.error('ToolPanel图片上传失败:', error);
+      // TODO: 显示错误提示
     }
   };
 
@@ -69,7 +137,7 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
     if (!page) return;
 
     const textElement: TextElement = {
-      id: `text_${Date.now()}`,
+      id: generateUUID(),
       type: 'text',
       x: 0.1,
       y: 0.1,
@@ -92,12 +160,44 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
     onPageChange(updatedPage);
   };
 
-  // 添加形状元素
+  // 添加装饰元素
+  const handleAddDecoration = (templateId: string) => {
+    if (!page) return;
+
+    const template = getDecorationTemplate(templateId);
+    if (!template) return;
+
+    const decorationElement: DecorationElement = {
+      id: generateUUID(),
+      type: 'decoration',
+      x: 0.2,
+      y: 0.2,
+      width: 0.3,
+      height: 0.3 / template.aspectRatio, // 根据宽高比调整高度
+      zIndex: page.elements.length + 1,
+      category: template.category,
+      subtype: template.subtype,
+      svgPath: template.svgContent,
+      fill: template.defaultStyle.fill,
+      stroke: template.defaultStyle.stroke,
+      strokeWidth: template.defaultStyle.strokeWidth
+    };
+
+    const updatedPage = {
+      ...page,
+      elements: [...page.elements, decorationElement],
+      updateTime: Date.now()
+    };
+
+    onPageChange(updatedPage);
+  };
+
+  // 保留原形状元素处理（向后兼容）
   const handleAddShape = (shapeType: 'rectangle' | 'circle' | 'triangle') => {
     if (!page) return;
 
     const shapeElement: ShapeElement = {
-      id: `shape_${Date.now()}`,
+      id: generateUUID(),
       type: 'shape',
       x: 0.1,
       y: 0.1,
@@ -124,7 +224,7 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
-      handleAddPhoto(file);
+      handlePhotoUpload(file);
     }
     e.target.value = ''; // 重置input
   };
@@ -197,7 +297,7 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
     const selectedElements = getSelectedElements();
     const newElements = selectedElements.map(element => ({
       ...element,
-      id: `element_${Date.now()}_${Math.random()}`,
+      id: generateUUID(),
       x: Math.min(element.x + 0.05, 0.9),
       y: Math.min(element.y + 0.05, 0.9),
       zIndex: page.elements.length + 1
@@ -393,19 +493,30 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
       </div>
 
       <div className="space-y-4">
-        {/* 照片元素 */}
+        {/* 图片元素 */}
         <div>
-          <h4 className="text-xs font-medium text-gray-700 mb-2">照片</h4>
-          <button 
-            onClick={() => handleAddPhoto()}
-            disabled={!page}
-            className="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg className="w-8 h-8 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <div className="text-sm text-gray-600">上传图片</div>
-          </button>
+          <h4 className="text-xs font-medium text-gray-700 mb-2">图片</h4>
+          <p className="text-xs text-gray-500 mb-3">选择图片框形状，然后添加到画布</p>
+          
+          {/* 图片形状选择器 */}
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            {getPhotoShapeOptions().map((shape) => (
+              <button
+                key={shape.value}
+                onClick={() => handleAddPhotoPlaceholder(shape.value)}
+                disabled={!page}
+                className="aspect-square flex flex-col items-center justify-center border border-gray-200 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed p-2"
+                title={shape.description}
+              >
+                <span className="text-lg mb-1">{shape.icon}</span>
+                <span className="text-xs text-gray-600">{shape.label}</span>
+              </button>
+            ))}
+          </div>
+          
+          <div className="text-xs text-gray-500 text-center">
+            添加后双击图片框上传图片
+          </div>
           
           {/* 隐藏的文件输入 */}
           <input
@@ -440,34 +551,88 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
           </div>
         </div>
 
-        {/* 形状元素 */}
+        {/* 装饰元素 */}
         <div>
-          <h4 className="text-xs font-medium text-gray-700 mb-2">形状</h4>
-          <div className="grid grid-cols-3 gap-2">
-            <button 
-              onClick={() => handleAddShape('rectangle')}
-              disabled={!page}
-              className="aspect-square flex items-center justify-center border border-gray-200 rounded-lg hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="矩形"
-            >
-              <div className="w-6 h-6 bg-gray-300 rounded-sm"></div>
-            </button>
-            <button 
-              onClick={() => handleAddShape('circle')}
-              disabled={!page}
-              className="aspect-square flex items-center justify-center border border-gray-200 rounded-lg hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="圆形"
-            >
-              <div className="w-6 h-6 bg-gray-300 rounded-full"></div>
-            </button>
-            <button 
-              onClick={() => handleAddShape('triangle')}
-              disabled={!page}
-              className="aspect-square flex items-center justify-center border border-gray-200 rounded-lg hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="三角形"
-            >
-              <div className="w-0 h-0 border-l-3 border-r-3 border-b-6 border-l-transparent border-r-transparent border-b-gray-300"></div>
-            </button>
+          <h4 className="text-xs font-medium text-gray-700 mb-2">装饰</h4>
+          <p className="text-xs text-gray-500 mb-3">添加装饰图案、线条、徽章等设计元素</p>
+          
+          {/* 装饰分类选择器 */}
+          <div className="space-y-3">
+            {/* 线条装饰 */}
+            <div>
+              <h5 className="text-xs font-medium text-gray-600 mb-2">📏 线条分割</h5>
+              <div className="grid grid-cols-2 gap-2">
+                {getDecorationsGrouped().lines.slice(0, 4).map((template) => (
+                  <button
+                    key={template.id}
+                    onClick={() => handleAddDecoration(template.id)}
+                    disabled={!page}
+                    className="h-8 flex items-center justify-center border border-gray-200 rounded hover:border-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs px-2"
+                    title={template.description}
+                  >
+                    {template.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 图案装饰 */}
+            <div>
+              <h5 className="text-xs font-medium text-gray-600 mb-2">🌟 图案纹理</h5>
+              <div className="grid grid-cols-2 gap-2">
+                {getDecorationsGrouped().patterns.map((template) => (
+                  <button
+                    key={template.id}
+                    onClick={() => handleAddDecoration(template.id)}
+                    disabled={!page}
+                    className="h-8 flex items-center justify-center border border-gray-200 rounded hover:border-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs px-2"
+                    title={template.description}
+                  >
+                    {template.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 标签装饰 */}
+            <div>
+              <h5 className="text-xs font-medium text-gray-600 mb-2">🔖 标签徽章</h5>
+              <div className="grid grid-cols-2 gap-2">
+                {getDecorationsGrouped().badges.map((template) => (
+                  <button
+                    key={template.id}
+                    onClick={() => handleAddDecoration(template.id)}
+                    disabled={!page}
+                    className="h-8 flex items-center justify-center border border-gray-200 rounded hover:border-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs px-2"
+                    title={template.description}
+                  >
+                    {template.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 特效装饰 */}
+            <div>
+              <h5 className="text-xs font-medium text-gray-600 mb-2">💫 特效点缀</h5>
+              <div className="grid grid-cols-2 gap-2">
+                {getDecorationsGrouped().effects.map((template) => (
+                  <button
+                    key={template.id}
+                    onClick={() => handleAddDecoration(template.id)}
+                    disabled={!page}
+                    className="h-8 flex items-center justify-center border border-gray-200 rounded hover:border-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs px-2"
+                    title={template.description}
+                  >
+                    {template.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          
+          <div className="text-xs text-gray-500 mt-3 text-center">
+            装饰元素可调整颜色、大小和位置
           </div>
         </div>
 

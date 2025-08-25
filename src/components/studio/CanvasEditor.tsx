@@ -1,7 +1,10 @@
 // 中间画布编辑区
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import type { Album, AlbumPage, EditorState, PageElement, PhotoElement, TextElement, ShapeElement } from '../../types';
+import type { Album, AlbumPage, EditorState, PageElement } from '../../types';
+import { getPhotoShapeStyle } from '../../utils/photoShapes';
+import { apiService } from '../../services/apiService';
+import { generateUUID } from '../../utils/uuid';
 
 interface CanvasEditorProps {
   album: Album | null;
@@ -19,46 +22,71 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
   onStateChange
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [canvasScale, setCanvasScale] = useState(1);
   const [showGrid, setShowGrid] = useState(true);
+  const [currentUploadElementId, setCurrentUploadElementId] = useState<string | null>(null);
+  const [uploadingElements, setUploadingElements] = useState<Set<string>>(new Set());
   
   // 拖拽和调整大小状态
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [draggedElement, setDraggedElement] = useState<PageElement | null>(null);
   
+  // 像素级拖拽状态
+  const [isDragModePixel, setIsDragModePixel] = useState(false);
+  const [pixelStartPos, setPixelStartPos] = useState({ x: 0, y: 0 });
+  const [hasActuallyDragged, setHasActuallyDragged] = useState(false);
+  const dragElementRef = useRef<HTMLDivElement | null>(null);
+  
   // 快捷键状态
   const [keyPressed, setKeyPressed] = useState<Set<string>>(new Set());
+  
+  // 缩放输入状态
+  const [scaleInput, setScaleInput] = useState('100');
 
-  // 计算画布缩放比例以适应容器
+  // 初始化默认缩放比例
   useEffect(() => {
-    if (!album || !canvasRef.current) return;
-
-    const updateScale = () => {
-      const container = canvasRef.current!;
-      const containerRect = container.getBoundingClientRect();
-      
-      // 留出一些边距
-      const padding = 80;
-      const maxWidth = containerRect.width - padding;
-      const maxHeight = containerRect.height - padding;
-      
-      const scaleX = maxWidth / album.canvasSize.width;
-      const scaleY = maxHeight / album.canvasSize.height;
-      
-      // 将默认的100%设置为原来200%的大小
-      // 这样A4页面在编辑区域中会显示得更大，更适合编辑
-      const baseScale = Math.min(scaleX, scaleY) * 2;
-      const scale = Math.min(baseScale, 2.5); // 最大不超过2.5倍
-      setCanvasScale(scale);
-    };
-
-    updateScale();
-    window.addEventListener('resize', updateScale);
-    return () => window.removeEventListener('resize', updateScale);
+    if (!album) return;
+    
+    // 默认缩放比例设为100%（相当于之前的200%显示大小）
+    setCanvasScale(1.0);
+    setScaleInput('100');
   }, [album]);
+
+  // 处理缩放输入
+  const handleScaleInputChange = (value: string) => {
+    setScaleInput(value);
+    
+    // 实时更新缩放（如果输入有效）
+    const numValue = parseFloat(value);
+    if (!isNaN(numValue) && numValue > 0 && numValue <= 500) {
+      setCanvasScale(numValue / 100);
+    }
+  };
+
+  // 处理缩放输入回车
+  const handleScaleInputKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      const numValue = parseFloat(scaleInput);
+      if (!isNaN(numValue) && numValue > 0) {
+        const clampedValue = Math.max(10, Math.min(500, numValue)); // 限制10%-500%
+        setCanvasScale(clampedValue / 100);
+        setScaleInput(clampedValue.toString());
+      } else {
+        // 无效输入时重置为当前缩放
+        setScaleInput(Math.round(canvasScale * 100).toString());
+      }
+    }
+  };
+
+  // 更新缩放时同步输入框
+  useEffect(() => {
+    setScaleInput(Math.round(canvasScale * 100).toString());
+  }, [canvasScale]);
 
   // 键盘事件监听
   useEffect(() => {
@@ -116,7 +144,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
   }, [page, editorState]);
 
   // 更新页面元素
-  const updatePageElement = useCallback((elementId: string, updates: Partial<PageElement>) => {
+  const updatePageElement = useCallback((elementId: string, updates: any) => {
     if (!page) return;
     
     const updatedPage = {
@@ -146,6 +174,62 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     onStateChange({ ...editorState, selectedElementIds: [] });
   }, [page, editorState, onPageChange, onStateChange]);
 
+  // 处理图片上传
+  const handlePhotoUpload = useCallback((elementId: string) => {
+    setCurrentUploadElementId(elementId);
+    fileInputRef.current?.click();
+  }, []);
+
+  // 处理文件选择和上传
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/') || !currentUploadElementId || !page) return;
+
+    console.log('开始上传文件:', { name: file.name, type: file.type, size: file.size });
+
+    // 标记元素为上传中状态
+    setUploadingElements(prev => new Set([...prev, currentUploadElementId]));
+
+    try {
+      // 上传到后台服务器
+      console.log('上传图片到服务器...');
+      const uploadResponse = await apiService.uploadImage(file);
+      console.log('图片上传成功:', { url: uploadResponse.url, originalName: uploadResponse.originalName });
+
+      // 更新页面元素
+      const updatedPage = {
+        ...page,
+        elements: page.elements.map(element => 
+          element.id === currentUploadElementId && element.type === 'photo'
+            ? { 
+                ...element, 
+                url: uploadResponse.url, 
+                originalName: uploadResponse.originalName,
+                placeholder: undefined  // 移除占位符
+              }
+            : element
+        ),
+        updateTime: Date.now()
+      };
+      
+      onPageChange(updatedPage);
+      console.log('页面更新成功');
+
+    } catch (error) {
+      console.error('上传失败:', error);
+      // TODO: 显示错误提示给用户
+    } finally {
+      // 清理状态
+      setUploadingElements(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(currentUploadElementId);
+        return newSet;
+      });
+      setCurrentUploadElementId(null);
+      e.target.value = ''; // 重置input
+    }
+  }, [currentUploadElementId, page, onPageChange]);
+
   // 复制选中元素
   const handleCopyElements = useCallback(() => {
     if (!page || editorState.selectedElementIds.length === 0) return;
@@ -163,7 +247,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     
     const newElements = editorState.clipboard.map(element => ({
       ...element,
-      id: `element_${Date.now()}_${Math.random()}`,
+      id: generateUUID(),
       x: Math.min(element.x + 0.05, 0.9), // 稍微偏移位置
       y: Math.min(element.y + 0.05, 0.9)
     }));
@@ -240,12 +324,27 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
       setIsResizing(true);
       setResizeHandle(handle);
     } else {
-      // 开始拖拽
+      // 开始拖拽 - 启用像素模式
       setIsDragging(true);
+      setIsDragModePixel(true);
+      setHasActuallyDragged(false);  // 重置拖拽状态
+      
+      // 从DOM元素获取当前真实的像素位置
+      const elementDOM = e.currentTarget as HTMLDivElement;
+      const rect = elementDOM.getBoundingClientRect();
+      const canvasRect = elementDOM.parentElement!.getBoundingClientRect();
+      
+      const pixelX = rect.left - canvasRect.left;
+      const pixelY = rect.top - canvasRect.top;
+      setPixelStartPos({ x: pixelX, y: pixelY });
+      
+      // 设置DOM引用以便直接操作
+      dragElementRef.current = elementDOM;
     }
     
     setDraggedElement(element);
     setDragStart({ x: e.clientX, y: e.clientY });
+    setLastMousePos({ x: e.clientX, y: e.clientY });
     
     // 选中元素
     if (!editorState.selectedElementIds.includes(element.id)) {
@@ -254,7 +353,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
         : [element.id];
       onStateChange({ ...editorState, selectedElementIds: newSelectedIds });
     }
-  }, [editorState, onStateChange]);
+  }, [editorState, onStateChange, album, canvasScale]);
 
   // 鼠标移动
   useEffect(() => {
@@ -262,40 +361,93 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
       if (!isDragging && !isResizing) return;
       if (!draggedElement || !album) return;
       
-      const deltaX = (e.clientX - dragStart.x) / (album.canvasSize.width * canvasScale);
-      const deltaY = (e.clientY - dragStart.y) / (album.canvasSize.height * canvasScale);
-      
-      if (isDragging) {
-        // 拖拽移动
-        const newX = Math.max(0, Math.min(1 - draggedElement.width, draggedElement.x + deltaX));
-        const newY = Math.max(0, Math.min(1 - draggedElement.height, draggedElement.y + deltaY));
+      if (isDragging && isDragModePixel && dragElementRef.current) {
+        // 标记为实际拖拽
+        setHasActuallyDragged(true);
+        
+        // 像素模式拖拽 - 直接操作DOM位置
+        const deltaPixelX = e.clientX - dragStart.x;
+        const deltaPixelY = e.clientY - dragStart.y;
+        
+        const newPixelX = pixelStartPos.x + deltaPixelX;
+        const newPixelY = pixelStartPos.y + deltaPixelY;
+        
+        // 获取画布和元素尺寸
+        const canvasRect = dragElementRef.current.parentElement!.getBoundingClientRect();
+        const elementRect = dragElementRef.current.getBoundingClientRect();
+        
+        // 计算边界限制（像素值）
+        const margin = 5;
+        const maxX = canvasRect.width - elementRect.width - margin;
+        const maxY = canvasRect.height - elementRect.height - margin;
+        
+        const clampedX = Math.max(margin, Math.min(maxX, newPixelX));
+        const clampedY = Math.max(margin, Math.min(maxY, newPixelY));
+        
+        // 直接设置像素位置
+        dragElementRef.current.style.left = `${clampedX}px`;
+        dragElementRef.current.style.top = `${clampedY}px`;
+        
+      } else if (isDragging && !isDragModePixel) {
+        // 原有的相对坐标模式（作为备用）
+        const deltaX = (e.clientX - lastMousePos.x) / (album.canvasSize.width * 2 * canvasScale);
+        const deltaY = (e.clientY - lastMousePos.y) / (album.canvasSize.height * 2 * canvasScale);
+        
+        setLastMousePos({ x: e.clientX, y: e.clientY });
+        
+        const margin = 0.01;
+        const maxX = 1 - draggedElement.width - margin;
+        const maxY = 1 - draggedElement.height - margin;
+        
+        const newX = Math.max(margin, Math.min(maxX, draggedElement.x + deltaX));
+        const newY = Math.max(margin, Math.min(maxY, draggedElement.y + deltaY));
         
         updatePageElement(draggedElement.id, { x: newX, y: newY });
+        setDraggedElement({ ...draggedElement, x: newX, y: newY });
       } else if (isResizing && resizeHandle) {
-        // 调整大小
+        // 调整大小 - 使用相对坐标模式
+        const deltaX = (e.clientX - lastMousePos.x) / (album.canvasSize.width * 2 * canvasScale);
+        const deltaY = (e.clientY - lastMousePos.y) / (album.canvasSize.height * 2 * canvasScale);
+        
+        setLastMousePos({ x: e.clientX, y: e.clientY });
+        
         let newWidth = draggedElement.width;
         let newHeight = draggedElement.height;
         let newX = draggedElement.x;
         let newY = draggedElement.y;
         
+        // 优化调整大小的边界处理
+        const minSize = 0.02; // 最小尺寸
+        const margin = 0.01;  // 边距
+        
         if (resizeHandle.includes('right')) {
-          newWidth = Math.max(0.05, Math.min(1 - draggedElement.x, draggedElement.width + deltaX));
+          newWidth = Math.max(minSize, Math.min(1 - draggedElement.x - margin, draggedElement.width + deltaX));
         }
         if (resizeHandle.includes('bottom')) {
-          newHeight = Math.max(0.05, Math.min(1 - draggedElement.y, draggedElement.height + deltaY));
+          newHeight = Math.max(minSize, Math.min(1 - draggedElement.y - margin, draggedElement.height + deltaY));
         }
         if (resizeHandle.includes('left')) {
           const widthChange = -deltaX;
-          newWidth = Math.max(0.05, draggedElement.width + widthChange);
-          newX = Math.max(0, draggedElement.x - widthChange);
+          newWidth = Math.max(minSize, draggedElement.width + widthChange);
+          newX = Math.max(margin, draggedElement.x - widthChange);
         }
         if (resizeHandle.includes('top')) {
           const heightChange = -deltaY;
-          newHeight = Math.max(0.05, draggedElement.height + heightChange);
-          newY = Math.max(0, draggedElement.y - heightChange);
+          newHeight = Math.max(minSize, draggedElement.height + heightChange);
+          newY = Math.max(margin, draggedElement.y - heightChange);
         }
         
-        updatePageElement(draggedElement.id, { 
+        // 直接更新调整大小，避免延迟
+        updatePageElement(draggedElement.id, {
+          x: newX,
+          y: newY,
+          width: newWidth,
+          height: newHeight
+        });
+        
+        // 更新拖拽元素状态
+        setDraggedElement({ 
+          ...draggedElement, 
           x: newX, 
           y: newY, 
           width: newWidth, 
@@ -305,10 +457,39 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     };
 
     const handleMouseUp = () => {
+      // 像素模式拖拽结束时，转换回相对坐标并保存
+      if (isDragging && isDragModePixel && hasActuallyDragged && dragElementRef.current && draggedElement && album) {
+        // 获取画布和元素的最终位置
+        const canvasRect = dragElementRef.current.parentElement!.getBoundingClientRect();
+        const elementRect = dragElementRef.current.getBoundingClientRect();
+        
+        // 计算相对于画布的像素位置
+        const finalPixelX = elementRect.left - canvasRect.left;
+        const finalPixelY = elementRect.top - canvasRect.top;
+        
+        // 转换回相对坐标（基于真实DOM尺寸）
+        const finalRelativeX = finalPixelX / canvasRect.width;
+        const finalRelativeY = finalPixelY / canvasRect.height;
+        
+        // 保存到状态
+        updatePageElement(draggedElement.id, { 
+          x: finalRelativeX, 
+          y: finalRelativeY 
+        });
+        
+        // 重置DOM样式，让React重新接管渲染
+        dragElementRef.current.style.left = '';
+        dragElementRef.current.style.top = '';
+      }
+      
+      // 清理状态
       setIsDragging(false);
       setIsResizing(false);
       setResizeHandle(null);
       setDraggedElement(null);
+      setIsDragModePixel(false);
+      setHasActuallyDragged(false);
+      dragElementRef.current = null;
     };
 
     if (isDragging || isResizing) {
@@ -320,15 +501,16 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging, isResizing, dragStart, draggedElement, resizeHandle, album, canvasScale, updatePageElement]);
+  }, [isDragging, isResizing, isDragModePixel, hasActuallyDragged, dragStart, pixelStartPos, lastMousePos, draggedElement, resizeHandle, album, canvasScale, updatePageElement]);
 
   // 渲染页面元素
   const renderPageElements = () => {
-    if (!page) return null;
+    if (!page || !album) return null;
 
     return page.elements.map((element) => {
       const isSelected = editorState.selectedElementIds.includes(element.id);
       
+      // 使用百分比渲染，保持与拖拽坐标转换的一致性
       const elementStyle = {
         position: 'absolute' as const,
         left: `${element.x * 100}%`,
@@ -424,31 +606,60 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
           onMouseDown={(e) => handleMouseDown(e, element)}
         >
           {element.type === 'photo' && (
-            <div className="w-full h-full bg-gray-200 border border-gray-300 rounded flex items-center justify-center">
-              {element.url ? (
-                <img
-                  src={element.url}
-                  alt="Photo"
-                  className="w-full h-full object-cover rounded"
-                  style={{
-                    filter: [
-                      element.filter && element.filter !== 'none' ? 
-                        element.filter === 'grayscale' ? 'grayscale(100%)' :
-                        element.filter === 'sepia' ? 'sepia(100%)' :
-                        element.filter === 'blur' ? 'blur(2px)' : ''
-                        : '',
-                      element.brightness && element.brightness !== 1 ? `brightness(${element.brightness})` : '',
-                      element.contrast && element.contrast !== 1 ? `contrast(${element.contrast})` : ''
-                    ].filter(f => f).join(' ') || 'none',
+            <div 
+              className="w-full h-full bg-gray-200 border border-gray-300 rounded flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors overflow-hidden"
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                handlePhotoUpload(element.id);
+              }}
+            >
+              {uploadingElements.has(element.id) ? (
+                // 上传中状态
+                <div className="text-blue-500 text-center flex flex-col items-center justify-center">
+                  <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                  <span className="text-xs">上传中...</span>
+                </div>
+              ) : element.url ? (
+                <div 
+                  className="relative w-full h-full group overflow-hidden"
+                  style={element.shape ? getPhotoShapeStyle(element.shape) : {
                     borderRadius: element.borderRadius ? `${element.borderRadius}px` : undefined
                   }}
-                />
+                >
+                  <img
+                    src={element.url}
+                    alt="Photo"
+                    className="w-full h-full object-cover"
+                    style={{
+                      filter: [
+                        element.filter && element.filter !== 'none' ? 
+                          element.filter === 'grayscale' ? 'grayscale(100%)' :
+                          element.filter === 'sepia' ? 'sepia(100%)' :
+                          element.filter === 'blur' ? 'blur(2px)' : ''
+                          : '',
+                        element.brightness && element.brightness !== 1 ? `brightness(${element.brightness})` : '',
+                        element.contrast && element.contrast !== 1 ? `contrast(${element.contrast})` : ''
+                      ].filter(f => f).join(' ') || 'none'
+                    }}
+                    onError={() => {
+                      console.error('图片加载失败:', element.url?.substring(0, 100));
+                    }}
+                    onLoad={() => {
+                      console.log('图片加载成功:', element.id);
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                    <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                      双击更换图片
+                    </span>
+                  </div>
+                </div>
               ) : (
                 <div className="text-gray-400 text-center">
                   <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  <span className="text-xs">点击添加图片</span>
+                  <span className="text-xs">{element.placeholder || '双击添加图片'}</span>
                 </div>
               )}
             </div>
@@ -483,6 +694,26 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 borderRadius: element.borderRadius || 0
               }}
             />
+          )}
+
+          {element.type === 'decoration' && (
+            <div 
+              className="w-full h-full flex items-center justify-center"
+              style={{
+                color: element.fill || '#333333'
+              }}
+            >
+              <svg 
+                viewBox="0 0 100 100" 
+                className="w-full h-full"
+                style={{
+                  fill: element.fill || 'currentColor',
+                  stroke: element.stroke || 'none',
+                  strokeWidth: element.strokeWidth || 0
+                }}
+                dangerouslySetInnerHTML={{ __html: element.svgPath || '' }}
+              />
+            </div>
           )}
 
           {/* 调整大小手柄 */}
@@ -534,38 +765,48 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
       <div className="bg-white border-b border-gray-200 px-4 py-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <div className="text-sm text-gray-600">
-              缩放: {Math.round(canvasScale * 100)}%
-            </div>
-            
             <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setCanvasScale(prev => Math.max(0.1, prev - 0.1))}
-                className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
-                title="缩小"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                </svg>
-              </button>
-              
-              <button
-                onClick={() => setCanvasScale(1)}
-                className="px-2 py-1 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
-                title="适合窗口"
-              >
-                1:1
-              </button>
-              
-              <button
-                onClick={() => setCanvasScale(prev => Math.min(3, prev + 0.1))}
-                className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
-                title="放大"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-              </button>
+              <span className="text-sm text-gray-600">缩放:</span>
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={() => setCanvasScale(prev => Math.max(0.1, prev - 0.1))}
+                  className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+                  title="缩小 (10%)"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                  </svg>
+                </button>
+                
+                <div className="flex items-center">
+                  <input
+                    type="text"
+                    value={scaleInput}
+                    onChange={(e) => handleScaleInputChange(e.target.value)}
+                    onKeyPress={handleScaleInputKeyPress}
+                    onBlur={() => {
+                      // 失焦时验证并重置
+                      const numValue = parseFloat(scaleInput);
+                      if (isNaN(numValue) || numValue <= 0) {
+                        setScaleInput(Math.round(canvasScale * 100).toString());
+                      }
+                    }}
+                    className="w-12 px-1 py-0.5 text-xs text-center border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                    title="输入缩放比例 (10-500)"
+                  />
+                  <span className="text-xs text-gray-600 ml-0.5">%</span>
+                </div>
+                
+                <button
+                  onClick={() => setCanvasScale(prev => Math.min(5, prev + 0.1))}
+                  className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+                  title="放大 (10%)"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* 选中元素信息 */}
@@ -637,8 +878,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
         <div
           className="relative bg-white shadow-lg"
           style={{
-            width: album.canvasSize.width * canvasScale,
-            height: album.canvasSize.height * canvasScale,
+            width: album.canvasSize.width * 2 * canvasScale,
+            height: album.canvasSize.height * 2 * canvasScale,
             backgroundColor: album.theme.backgroundColor,
             backgroundImage: album.theme.backgroundGradient
           }}
@@ -652,7 +893,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
                   linear-gradient(to right, #000 1px, transparent 1px),
                   linear-gradient(to bottom, #000 1px, transparent 1px)
                 `,
-                backgroundSize: `${20 * canvasScale}px ${20 * canvasScale}px`
+                backgroundSize: `${10 * canvasScale}px ${10 * canvasScale}px`
               }}
             />
           )}
@@ -666,6 +907,15 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
           <div className="absolute inset-0 border border-gray-300 pointer-events-none" />
         </div>
       </div>
+
+      {/* 隐藏的文件输入 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileChange}
+        className="hidden"
+      />
     </div>
   );
 };

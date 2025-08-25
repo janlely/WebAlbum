@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { StorageService } from '../services/storageService';
+import { useAutoSave } from '../hooks/useAutoSave';
+import { generateUUID } from '../utils/uuid';
 import type { 
   Album, 
   AlbumPage, 
@@ -55,7 +57,6 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
   
   // 保存状态
   const [isSaving, setIsSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState('');
 
   // 初始化加载数据
   useEffect(() => {
@@ -64,19 +65,43 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
 
   const initializeApp = async () => {
     try {
-      // 在API模式下，确保设置用户ID
-      if (StorageService.getStorageMode() === 'api') {
-        const { apiService } = await import('../services/apiService');
-        // 设置默认用户ID (在真实应用中应该从认证系统获取)
-        const userId = localStorage.getItem('user_id') || 'demo_user';
-        localStorage.setItem('user_id', userId);
-        apiService.setUserId(userId);
-        console.log('API模式已初始化，用户ID:', userId);
-      }
+      // 确保设置用户ID
+      const { apiService } = await import('../services/apiService');
+      // 设置默认用户ID (在真实应用中应该从认证系统获取)
+      const userId = localStorage.getItem('user_id') || 'demo_user';
+      localStorage.setItem('user_id', userId);
+      apiService.setUserId(userId);
+      console.log('API服务已初始化，用户ID:', userId);
+      
+      // 清理旧的本地数据，避免ID格式冲突
+      await clearLegacyLocalData();
       
       await loadInitialData();
     } catch (error) {
       console.error('初始化应用失败:', error);
+    }
+  };
+
+  // 清理旧的本地存储数据
+  const clearLegacyLocalData = async () => {
+    try {
+      const legacyKeys = [
+        'webalbum_albums',
+        'webalbum_pages', 
+        'webalbum_current_album_id',
+        'webalbum_current_page_id'
+      ];
+      
+      legacyKeys.forEach(key => {
+        if (localStorage.getItem(key)) {
+          console.log(`清理旧数据: ${key}`);
+          localStorage.removeItem(key);
+        }
+      });
+      
+      console.log('旧数据清理完成');
+    } catch (error) {
+      console.warn('清理旧数据失败:', error);
     }
   };
 
@@ -142,11 +167,6 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
   // 选择页面
   const selectPage = useCallback(async (pageId: string) => {
     try {
-      // 保存当前页面
-      if (currentPage) {
-        await savePage(currentPage);
-      }
-      
       const page = await StorageService.getPage(pageId);
       if (!page) return;
       
@@ -164,13 +184,11 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
   // 创建新相册
   const createNewAlbum = useCallback(async (albumData: Partial<Album>) => {
     try {
-      // 检查存储模式
-      const storageMode = StorageService.getStorageMode();
+
       
       let newAlbum: Album;
       
-      if (storageMode === 'api') {
-        // API模式：让后端生成ID和其他字段
+      // 让后端生成ID和其他字段
         const albumToCreate = {
           name: albumData.name || '新相册',
           description: albumData.description,
@@ -180,8 +198,8 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
             showGrid: true,
             snapToGrid: true,
             gridSize: 10,
-            autoSave: true,
-            autoSaveInterval: 30
+            autoSave: true,  // 保留兼容性，但实际使用实时保存
+            autoSaveInterval: 5  // 减少到5秒（虽然不再使用）
           },
           tags: [],
           category: 'default'
@@ -198,40 +216,11 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
         if (savedAlbum) {
           await selectAlbum(savedAlbum.id);
         }
-      } else {
-        // 本地存储模式：客户端生成ID
-        newAlbum = {
-          id: `album_${Date.now()}`,
-          name: albumData.name || '新相册',
-          description: albumData.description,
-          canvasSize: albumData.canvasSize!,
-          theme: albumData.theme!,
-          settings: {
-            showGrid: true,
-            snapToGrid: true,
-            gridSize: 10,
-            autoSave: true,
-            autoSaveInterval: 30
-          },
-          pageCount: 0,
-          createTime: Date.now(),
-          updateTime: Date.now(),
-          lastEditTime: Date.now(),
-          tags: [],
-          category: 'default'
-        };
-        
-        const savedAlbum = await StorageService.saveAlbum(newAlbum);
-        
-        // 更新状态
-        setAlbums(prev => [savedAlbum, ...prev]);
-        await selectAlbum(savedAlbum.id);
-      }
       
-      showSaveMessage('新相册创建成功');
+      console.log('新相册创建成功');
     } catch (error) {
       console.error('创建相册失败:', error);
-      showSaveMessage('创建相册失败', true);
+      // 错误已在console.error中记录
     }
   }, [selectAlbum]);
 
@@ -241,7 +230,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
     
     try {
       const newPage: AlbumPage = {
-        id: `page_${Date.now()}`,
+        id: generateUUID(),
         albumId: currentAlbum.id,
         name: `页面 ${albumPages.length + 1}`,
         order: albumPages.length,
@@ -259,10 +248,10 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       setCurrentPage(newPage);
       setEditorState(prev => ({ ...prev, currentPageId: newPage.id }));
       
-      showSaveMessage('新页面创建成功');
+      console.log('新页面创建成功');
     } catch (error) {
       console.error('创建页面失败:', error);
-      showSaveMessage('创建页面失败', true);
+      // 错误已在console.error中记录
     }
   }, [currentAlbum, albumPages]);
 
@@ -286,10 +275,10 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
         prev.map(p => p.id === updatedPage.id ? updatedPage : p)
       );
       
-      showSaveMessage('模板应用成功');
+      console.log('模板应用成功');
     } catch (error) {
       console.error('应用模板失败:', error);
-      showSaveMessage('应用模板失败', true);
+      // 错误已在console.error中记录
     }
   }, [currentPage]);
 
@@ -336,53 +325,33 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
     return elements;
   }, []);
 
-  // 保存页面
-  const savePage = useCallback(async (page: AlbumPage) => {
-    if (!page) return;
-    
-    try {
-      setIsSaving(true);
-      page.updateTime = Date.now();
-      await StorageService.savePage(page);
-      
-      // 更新本地状态
-      setAlbumPages(prev => 
-        prev.map(p => p.id === page.id ? page : p)
-      );
-      
-      setEditorState(prev => ({ ...prev, lastSaveTime: Date.now() }));
-      showSaveMessage('保存成功');
-    } catch (error) {
-      console.error('保存页面失败:', error);
-      showSaveMessage('保存失败', true);
-    } finally {
-      setIsSaving(false);
+  // 实时自动保存 - 监听数据变化
+  const { forceSave } = useAutoSave(
+    currentPage,
+    async (page: AlbumPage) => {
+      try {
+        setIsSaving(true);
+        page.updateTime = Date.now();
+        await StorageService.savePage(page);
+        
+        // 更新本地状态
+        setAlbumPages(prev => 
+          prev.map(p => p.id === page.id ? page : p)
+        );
+        
+        setEditorState(prev => ({ ...prev, lastSaveTime: Date.now() }));
+      } catch (error) {
+        console.error('自动保存失败:', error);
+        throw error;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    {
+      enabled: true, // 始终启用实时保存
+      delay: 500    // 500ms防抖延迟
     }
-  }, []);
-
-  // 手动保存
-  const handleSave = useCallback(async () => {
-    if (currentPage) {
-      await savePage(currentPage);
-    }
-  }, [currentPage, savePage]);
-
-  // 自动保存
-  useEffect(() => {
-    if (!currentAlbum?.settings.autoSave || !currentPage) return;
-    
-    const interval = setInterval(() => {
-      savePage(currentPage);
-    }, (currentAlbum.settings.autoSaveInterval || 30) * 1000);
-    
-    return () => clearInterval(interval);
-  }, [currentAlbum, currentPage, savePage]);
-
-  // 显示保存消息
-  const showSaveMessage = (message: string, isError = false) => {
-    setSaveMessage(message);
-    setTimeout(() => setSaveMessage(''), 3000);
-  };
+  );
 
   // 删除相册
   const deleteAlbum = useCallback(async (albumId: string) => {
@@ -409,10 +378,10 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
         }
       }
       
-      showSaveMessage('相册删除成功');
+      console.log('相册删除成功');
     } catch (error) {
       console.error('删除相册失败:', error);
-      showSaveMessage('删除相册失败', true);
+      // 错误已在console.error中记录
     }
   }, [albums, currentAlbum, selectAlbum]);
 
@@ -436,10 +405,10 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
         }
       }
       
-      showSaveMessage('页面删除成功');
+      console.log('页面删除成功');
     } catch (error) {
       console.error('删除页面失败:', error);
-      showSaveMessage('删除页面失败', true);
+      // 错误已在console.error中记录
     }
   }, [albumPages, currentPage]);
 
@@ -449,24 +418,25 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       const originalAlbum = await StorageService.getAlbum(albumId);
       if (!originalAlbum) return;
       
-      const newAlbum: Album = {
-        ...originalAlbum,
-        id: `album_${Date.now()}`,
+      // 创建副本（让后端生成新的UUID）
+      const albumData = {
         name: `${originalAlbum.name} - 副本`,
-        createTime: Date.now(),
-        updateTime: Date.now(),
-        lastEditTime: Date.now(),
-        pageCount: 0
+        description: originalAlbum.description,
+        canvasSize: originalAlbum.canvasSize,
+        theme: originalAlbum.theme,
+        settings: originalAlbum.settings,
+        tags: originalAlbum.tags,
+        category: originalAlbum.category
       };
       
-      await StorageService.saveAlbum(newAlbum);
+      const newAlbum = await StorageService.saveAlbum(albumData as Album);
       
       // 复制所有页面
       const originalPages = await StorageService.getAlbumPages(albumId);
       for (const originalPage of originalPages) {
         const newPage: AlbumPage = {
           ...originalPage,
-          id: `page_${Date.now()}_${Math.random()}`,
+          id: generateUUID(),
           albumId: newAlbum.id,
           createTime: Date.now(),
           updateTime: Date.now()
@@ -476,10 +446,10 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       
       // 更新相册列表
       setAlbums(prev => [newAlbum, ...prev]);
-      showSaveMessage('相册复制成功');
+      console.log('相册复制成功');
     } catch (error) {
       console.error('复制相册失败:', error);
-      showSaveMessage('复制相册失败', true);
+      // 错误已在console.error中记录
     }
   }, []);
 
@@ -491,7 +461,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       
       const newPage: AlbumPage = {
         ...originalPage,
-        id: `page_${Date.now()}`,
+        id: generateUUID(),
         name: `${originalPage.name} - 副本`,
         order: albumPages.length,
         createTime: Date.now(),
@@ -503,10 +473,10 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       // 更新状态
       const updatedPages = [...albumPages, newPage];
       setAlbumPages(updatedPages);
-      showSaveMessage('页面复制成功');
+      console.log('页面复制成功');
     } catch (error) {
       console.error('复制页面失败:', error);
-      showSaveMessage('复制页面失败', true);
+      // 错误已在console.error中记录
     }
   }, [albumPages, currentAlbum]);
 
@@ -529,10 +499,10 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
         setCurrentAlbum(prev => prev ? { ...prev, name: newName } : null);
       }
       
-      showSaveMessage('相册重命名成功');
+      console.log('相册重命名成功');
     } catch (error) {
       console.error('重命名相册失败:', error);
-      showSaveMessage('重命名相册失败', true);
+      // 错误已在console.error中记录
     }
   }, [currentAlbum]);
 
@@ -555,10 +525,10 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
         setCurrentPage(prev => prev ? { ...prev, name: newName } : null);
       }
       
-      showSaveMessage('页面重命名成功');
+      console.log('页面重命名成功');
     } catch (error) {
       console.error('重命名页面失败:', error);
-      showSaveMessage('重命名页面失败', true);
+      // 错误已在console.error中记录
     }
   }, [currentPage]);
 
@@ -573,10 +543,10 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
         setAlbumPages(updatedPages);
       }
       
-      showSaveMessage('页面顺序已更新');
+      console.log('页面顺序已更新');
     } catch (error) {
       console.error('重排序页面失败:', error);
-      showSaveMessage('重排序页面失败', true);
+      // 错误已在console.error中记录
     }
   }, [currentAlbum]);
 
@@ -597,10 +567,10 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
     try {
       // TODO: 实现导出功能
       console.log('导出相册:', currentAlbum.name);
-      showSaveMessage('导出功能开发中...');
+      console.log('导出功能开发中...');
     } catch (error) {
       console.error('导出失败:', error);
-      showSaveMessage('导出失败', true);
+      // 错误已在console.error中记录
     }
   }, [currentAlbum]);
 
@@ -634,33 +604,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
         </div>
 
         <div className="flex items-center space-x-3">
-          {/* 保存状态 */}
-          {saveMessage && (
-            <div className={`text-sm px-3 py-1 rounded ${
-              saveMessage.includes('失败') 
-                ? 'text-red-600 bg-red-50' 
-                : 'text-green-600 bg-green-50'
-            }`}>
-              {saveMessage}
-            </div>
-          )}
-          
-          {/* 自动保存状态 */}
-          {currentAlbum?.settings.autoSave && (
-            <div className="text-xs text-gray-500 flex items-center space-x-1">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span>自动保存已开启</span>
-            </div>
-          )}
-          
           {/* 操作按钮 */}
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-          >
-            {isSaving ? '保存中...' : '保存'}
-          </button>
           
           <button
             onClick={handleExport}

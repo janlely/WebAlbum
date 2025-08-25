@@ -17,10 +17,17 @@ export interface BaseElement {
 }
 
 // 照片元素
+// 图片形状类型
+export type PhotoShapeType = 'rectangle' | 'circle' | 'triangle' | 'hexagon' | 'star' | 'heart' | 'diamond';
+
 export interface PhotoElement extends BaseElement {
   type: 'photo';
   url: string; // 图片数据URL
   originalName?: string;
+  placeholder?: string; // 占位符文字
+  
+  // 图片形状
+  shape?: PhotoShapeType;
   
   // 图片调整
   scale?: number; // 缩放比例
@@ -67,6 +74,36 @@ export interface TextElement extends BaseElement {
 }
 
 // 形状元素
+// 装饰元素类型
+export type DecorationCategory = 'lines' | 'patterns' | 'badges' | 'effects';
+export type DecorationSubtype = 
+  // 线条类
+  | 'straight-line' | 'dashed-line' | 'wavy-line' | 'arrow-line' | 'divider'
+  // 图案类  
+  | 'geometric-pattern' | 'floral-pattern' | 'texture-pattern'
+  // 标签类
+  | 'ribbon-badge' | 'circle-badge' | 'corner-badge'
+  // 特效类
+  | 'star-effect' | 'heart-effect' | 'glow-effect' | 'sparkle-effect';
+
+// 装饰元素（原形状元素重构）
+export interface DecorationElement extends BaseElement {
+  type: 'decoration';
+  category: DecorationCategory;
+  subtype: DecorationSubtype;
+  svgPath?: string; // SVG路径数据
+  
+  // 样式
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  
+  // 特殊属性
+  animationSpeed?: number; // 动画速度（如果支持动画）
+  pattern?: string; // 图案填充
+}
+
+// 保留原形状元素（向后兼容）
 export interface ShapeElement extends BaseElement {
   type: 'shape';
   shapeType: 'rectangle' | 'circle' | 'triangle' | 'line';
@@ -79,7 +116,7 @@ export interface ShapeElement extends BaseElement {
 }
 
 // 页面元素联合类型
-export type PageElement = PhotoElement | TextElement | ShapeElement;
+export type PageElement = PhotoElement | TextElement | ShapeElement | DecorationElement;
 
 // 页面数据结构
 export interface AlbumPage {

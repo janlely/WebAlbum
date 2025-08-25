@@ -43,10 +43,14 @@ export type {
   PhotoElement,
   TextElement,
   ShapeElement,
+  DecorationElement,
   BaseElement,
   EditorState,
   ToolPanelState,
-  ProjectPanelState
+  ProjectPanelState,
+  PhotoShapeType,
+  DecorationCategory,
+  DecorationSubtype
 } from './album';
 
 // 导出常量数据
