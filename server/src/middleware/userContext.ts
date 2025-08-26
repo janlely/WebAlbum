@@ -30,10 +30,10 @@ export const userContextMiddleware = (req: Request, res: Response, next: NextFun
     // 1. Authorization Bearer token (将来实现JWT时使用)
     // 2. X-User-Id 请求头
     // 3. userId 查询参数
-    // 4. 默认用户
 
-    // 开发环境使用有效的UUID v4格式测试用户
-    let userId = process.env.NODE_ENV === 'production' ? '' : 'c7b4df11-d82b-4cd8-88f8-622dfcd00c4c';
+    let userId = '';
+    
+    // 生产环境严格校验，开发环境需要显式传递用户信息
 
     // 从请求头获取用户ID
     const headerUserId = req.headers['x-user-id'] as string;
@@ -55,8 +55,8 @@ export const userContextMiddleware = (req: Request, res: Response, next: NextFun
       }
     }
 
-    // 验证用户ID格式（简单验证）
-    if (!isValidUserId(userId)) {
+    // 仅当有用户ID时验证格式
+    if (userId && !isValidUserId(userId)) {
       res.status(400).json({
         success: false,
         message: '无效的用户ID格式'
@@ -87,8 +87,8 @@ export const userContextMiddleware = (req: Request, res: Response, next: NextFun
  * 验证用户ID格式的辅助函数
  */
 function isValidUserId(userId: string): boolean {
-  // 允许默认用户
-  if (userId === 'default-user') {
+  // 空值由后续中间件处理
+  if (!userId) {
     return true;
   }
 

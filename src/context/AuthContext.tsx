@@ -40,12 +40,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const response = await apiService.post('/auth/login', { username, password });
     if (response.success) {
       setUser(response.data.user);
+      // 移除设置X-User-Info头的旧逻辑
     }
   };
 
   const logout = async () => {
-    await apiService.post('/auth/logout');
-    setUser(null);
+    try {
+      await apiService.post('/auth/logout');
+    } finally {
+      setUser(null);
+      // 清除所有cookie
+      document.cookie = 'session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    }
   };
 
   return (
@@ -55,4 +62,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
+// 存储登出函数引用
+let logoutRef: (() => Promise<void>) | null = null;
+
+// 标准认证Hook
+export const useAuth = () => {
+  const auth = useContext(AuthContext);
+  logoutRef = auth.logout; // 更新全局引用
+  return auth;
+};
+
+// 供API服务使用的独立登出方法
+export const triggerLogout = async () => {
+  try {
+    if (logoutRef) {
+      await logoutRef();
+    }
+    // 确保清除所有认证相关cookie
+    document.cookie = 'session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    // 直接跳转，避免React Router依赖
+    window.location.href = '/login?from=' + encodeURIComponent(window.location.pathname);
+  } catch (error) {
+    console.error('登出过程中发生错误:', error);
+    window.location.href = '/login';
+  }
+};

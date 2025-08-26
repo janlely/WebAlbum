@@ -93,12 +93,15 @@ class ApiService implements IApiService {
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
     
-    const defaultHeaders = {
+    const defaultHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
     };
+    
+    // 移除过期的X-User-Info头
 
     const config: RequestInit = {
       ...options,
+      credentials: 'include', // 确保携带cookie
       headers: {
         ...defaultHeaders,
         ...options.headers,
@@ -112,12 +115,22 @@ class ApiService implements IApiService {
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 401) {
+          // 清除认证状态
+          const { triggerLogout } = await import('../context/AuthContext');
+          await triggerLogout();
+        }
         throw new Error(data.message || `HTTP error! status: ${response.status}`);
       }
 
       return data;
     } catch (error) {
       console.error('API请求失败:', error);
+      if (error instanceof Error && error.message.includes('401')) {
+        // 使用统一的登出方法
+        const { triggerLogout } = await import('../context/AuthContext');
+        await triggerLogout();
+      }
       throw error;
     }
   }
@@ -169,8 +182,8 @@ class ApiService implements IApiService {
             body: JSON.stringify({
               name: album.name,
               description: album.description,
-              canvasSizeId: album.canvasSize.id,
-              themeId: album.theme.id,
+              canvasSizeId: album.canvasSizeId,
+              themeId: album.themeId,
               settings: album.settings,
               tags: album.tags,
               category: album.category,
@@ -190,8 +203,8 @@ class ApiService implements IApiService {
       body: JSON.stringify({
         name: album.name,
         description: album.description,
-        canvasSizeId: album.canvasSize.id,
-        themeId: album.theme.id,
+        canvasSizeId: album.canvasSizeId,
+        themeId: album.themeId,
         settings: album.settings || {},
         tags: album.tags || [],
         category: album.category,
@@ -468,8 +481,10 @@ class ApiService implements IApiService {
       id: backendAlbum.id,
       name: backendAlbum.name,
       description: backendAlbum.description,
-      canvasSize: this.mapBackendCanvasSizeToFrontend(backendAlbum.canvasSize || { id: backendAlbum.canvasSizeId }),
-      theme: this.mapBackendThemeToFrontend(backendAlbum.theme || { id: backendAlbum.themeId }),
+      canvasSizeId: backendAlbum.canvasSizeId,
+      themeId: backendAlbum.themeId,
+      canvasSize: backendAlbum.canvasSize ? this.mapBackendCanvasSizeToFrontend(backendAlbum.canvasSize) : undefined,
+      theme: backendAlbum.theme ? this.mapBackendThemeToFrontend(backendAlbum.theme) : undefined,
       settings: typeof backendAlbum.settings === 'string' 
         ? JSON.parse(backendAlbum.settings) 
         : backendAlbum.settings,
