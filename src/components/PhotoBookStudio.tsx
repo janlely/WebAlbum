@@ -364,8 +364,8 @@ const PhotoBookStudio: React.FC = () => {
     return elements;
   }, []);
 
-  // 实时自动保存 - 监听数据变化
-  const { forceSave } = useAutoSave(
+  // 事件驱动自动保存
+  const { saveOnChange } = useAutoSave(
     currentPage,
     async (page: AlbumPage) => {
       try {
@@ -388,9 +388,15 @@ const PhotoBookStudio: React.FC = () => {
     },
     {
       enabled: true, // 始终启用实时保存
-      delay: 500    // 500ms防抖延迟
     }
   );
+
+  // 当页面数据变化时触发保存
+  useEffect(() => {
+    if (currentPage) {
+      saveOnChange();
+    }
+  }, [currentPage, saveOnChange]);
 
   // 删除相册
   const deleteAlbum = useCallback(async (albumId: string) => {

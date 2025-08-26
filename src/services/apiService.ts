@@ -241,8 +241,11 @@ class ApiService implements IApiService {
 
   // 页面管理
   async savePage(page: AlbumPage): Promise<AlbumPage> {
-    if (await this.getPage(page.id)) {
-      // 更新页面
+    // 对于新页面（没有有效ID），使用POST创建
+    const isNewPage = !page.id || page.id.startsWith('page_');
+    
+    if (!isNewPage) {
+      // 更新现有页面
       const response = await this.request<AlbumPage>(`/pages/${page.id}`, {
         method: 'PUT',
         body: JSON.stringify({
@@ -256,7 +259,7 @@ class ApiService implements IApiService {
       });
       return this.mapBackendPageToFrontend(response.data!);
     } else {
-      // 创建页面
+      // 创建新页面
       const response = await this.request<AlbumPage>(`/pages`, {
         method: 'POST',
         body: JSON.stringify({
