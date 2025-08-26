@@ -1,7 +1,7 @@
 // 页面控制器
 
 import { Request, Response, NextFunction } from 'express';
-import { pageService, PageListResult } from '../services/PageService';
+import { pageService } from '../services/PageService';
 import { CreatePageRequest, UpdatePageRequest, PageListQuery } from '../models/PageDAO';
 
 export class PageController {

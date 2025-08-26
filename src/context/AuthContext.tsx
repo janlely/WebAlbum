@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { apiService } from '../services/apiService';
 
 interface AuthContextType {
@@ -38,9 +38,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, password: string) => {
     const response = await apiService.post('/auth/login', { username, password });
+    console.log('登录结果:', response);
     if (response.success) {
+      console.log('登录成功: ', response.data.user);
       setUser(response.data.user);
-      // 移除设置X-User-Info头的旧逻辑
+    } else {
+      console.error('登录失败: ', response.message);
     }
   };
 
@@ -64,12 +67,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 // 存储登出函数引用
 let logoutRef: (() => Promise<void>) | null = null;
+let navigateRef: ((path: string) => void) | null = null;
 
 // 标准认证Hook
 export const useAuth = () => {
   const auth = useContext(AuthContext);
   logoutRef = auth.logout; // 更新全局引用
   return auth;
+};
+
+// 设置导航函数（在App.tsx中调用）
+export const setNavigateFunction = (navigate: (path: string) => void) => {
+  navigateRef = navigate;
 };
 
 // 供API服务使用的独立登出方法
@@ -81,10 +90,19 @@ export const triggerLogout = async () => {
     // 确保清除所有认证相关cookie
     document.cookie = 'session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    // 直接跳转，避免React Router依赖
-    window.location.href = '/login?from=' + encodeURIComponent(window.location.pathname);
+    
+    // 使用React Router导航（如果可用），否则回退到window.location
+    if (navigateRef) {
+      navigateRef('/login?from=' + encodeURIComponent(window.location.pathname));
+    } else {
+      window.location.href = '/login?from=' + encodeURIComponent(window.location.pathname);
+    }
   } catch (error) {
     console.error('登出过程中发生错误:', error);
-    window.location.href = '/login';
+    if (navigateRef) {
+      navigateRef('/login');
+    } else {
+      window.location.href = '/login';
+    }
   }
 };

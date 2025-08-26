@@ -376,13 +376,7 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
         <h3 className="text-sm font-medium text-gray-900 mb-3">画布尺寸</h3>
         {album && (
           <div className="p-3 bg-gray-50 rounded-lg">
-            <div className="text-sm font-medium">{album.canvasSize.name}</div>
-            <div className="text-xs text-gray-500">
-              {album.canvasSize.width} × {album.canvasSize.height} • {album.canvasSize.aspectRatio}
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              {album.canvasSize.description}
-            </div>
+            <div className="text-sm font-medium">ID: {album.canvasSizeId}</div>
           </div>
         )}
       </div>
@@ -390,16 +384,16 @@ const ToolPanel: React.FC<ToolPanelProps> = ({
       <div>
         <h3 className="text-sm font-medium text-gray-900 mb-3">设计主题</h3>
         {album && (
-          <div className="space-y-2">
-            {defaultThemes.map((theme) => (
-              <button
-                key={theme.id}
-                onClick={() => onAlbumChange({ ...album, theme })}
-                className={`w-full p-3 border rounded-lg text-left transition-all ${
-                  album.theme.id === theme.id
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
+              <div className="space-y-2">
+                {defaultThemes.map((theme) => (
+                  <button
+                    key={theme.id}
+                    onClick={() => album && onAlbumChange({ ...album, themeId: theme.id })}
+                    className={`w-full p-3 border rounded-lg text-left transition-all ${
+                      album?.themeId === theme.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
               >
                 <div className="flex items-center space-x-3">
                   <img

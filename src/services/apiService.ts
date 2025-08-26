@@ -414,7 +414,7 @@ class ApiService implements IApiService {
   // 获取画布尺寸
   async getCanvasSizes(): Promise<any[]> {
     const response = await this.request('/canvas-sizes');
-    return response.data!;
+    return response.data || [];
   }
 
   // 编辑器状态管理（保留本地存储）

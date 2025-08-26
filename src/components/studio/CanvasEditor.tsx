@@ -27,6 +27,8 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const [showGrid, setShowGrid] = useState(true);
   const [currentUploadElementId, setCurrentUploadElementId] = useState<string | null>(null);
   const [uploadingElements, setUploadingElements] = useState<Set<string>>(new Set());
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number } | null>(null);
+  const [theme, setTheme] = useState<{ backgroundColor: string; backgroundGradient: string } | null>(null);
   
   // 拖拽和调整大小状态
   const [isDragging, setIsDragging] = useState(false);
@@ -50,11 +52,60 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   // 初始化默认缩放比例
   useEffect(() => {
-    if (!album) return;
-    
-    // 默认缩放比例设为100%（相当于之前的200%显示大小）
-    setCanvasScale(1.0);
-    setScaleInput('100');
+    const fetchCanvasSize = async () => {
+      if (!album?.canvasSizeId) return;
+      
+      try {
+        const sizes = await apiService.getCanvasSizes();
+        const size = sizes.find(s => s.id === album.canvasSizeId);
+        if (size) {
+          setCanvasSize({ width: size.width, height: size.height });
+        } else {
+          setCanvasSize({ width: 800, height: 600 });
+        }
+      } catch (error) {
+        console.error('获取画布尺寸失败:', error);
+        setCanvasSize({ width: 800, height: 600 });
+      }
+    };
+
+    const fetchTheme = async () => {
+      if (!album?.themeId) return;
+      
+      try {
+        const themes = await apiService.getThemes();
+        const themeData = themes.find(t => t.id === album.themeId);
+        if (themeData) {
+          setTheme({
+            backgroundColor: themeData.backgroundColor,
+            backgroundGradient: themeData.backgroundGradient
+          });
+        } else {
+          setTheme({
+            backgroundColor: '#ffffff',
+            backgroundGradient: ''
+          });
+        }
+      } catch (error) {
+        console.error('获取主题失败:', error);
+        setTheme({
+          backgroundColor: '#ffffff',
+          backgroundGradient: ''
+        });
+      }
+    };
+
+    if (album) {
+      fetchCanvasSize();
+      fetchTheme();
+      
+      // 默认缩放比例设为100%
+      setCanvasScale(1.0);
+      setScaleInput('100');
+    } else {
+      setCanvasSize(null);
+      setTheme(null);
+    }
   }, [album]);
 
   // 处理缩放输入
@@ -388,10 +439,10 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
         dragElementRef.current.style.left = `${clampedX}px`;
         dragElementRef.current.style.top = `${clampedY}px`;
         
-      } else if (isDragging && !isDragModePixel) {
+      } else if (isDragging && !isDragModePixel && canvasSize) {
         // 原有的相对坐标模式（作为备用）
-        const deltaX = (e.clientX - lastMousePos.x) / (album.canvasSize.width * 2 * canvasScale);
-        const deltaY = (e.clientY - lastMousePos.y) / (album.canvasSize.height * 2 * canvasScale);
+        const deltaX = (e.clientX - lastMousePos.x) / (canvasSize.width * 2 * canvasScale);
+        const deltaY = (e.clientY - lastMousePos.y) / (canvasSize.height * 2 * canvasScale);
         
         setLastMousePos({ x: e.clientX, y: e.clientY });
         
@@ -404,10 +455,10 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
         
         updatePageElement(draggedElement.id, { x: newX, y: newY });
         setDraggedElement({ ...draggedElement, x: newX, y: newY });
-      } else if (isResizing && resizeHandle) {
+      } else if (isResizing && resizeHandle && canvasSize) {
         // 调整大小 - 使用相对坐标模式
-        const deltaX = (e.clientX - lastMousePos.x) / (album.canvasSize.width * 2 * canvasScale);
-        const deltaY = (e.clientY - lastMousePos.y) / (album.canvasSize.height * 2 * canvasScale);
+        const deltaX = (e.clientX - lastMousePos.x) / (canvasSize.width * 2 * canvasScale);
+        const deltaY = (e.clientY - lastMousePos.y) / (canvasSize.height * 2 * canvasScale);
         
         setLastMousePos({ x: e.clientX, y: e.clientY });
         
@@ -506,8 +557,11 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
   // 渲染页面元素
   const renderPageElements = () => {
     if (!page || !album) return null;
-
-    return page.elements.map((element) => {
+    
+    // 确保elements是数组
+    const elements = Array.isArray(page.elements) ? page.elements : [];
+    
+    return elements.map((element) => {
       const isSelected = editorState.selectedElementIds.includes(element.id);
       
       // 使用百分比渲染，保持与拖拽坐标转换的一致性
@@ -736,7 +790,7 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
       <div className="h-full flex items-center justify-center bg-gray-100">
         <div className="text-center text-gray-500">
           <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 极 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
           </svg>
           <h3 className="text-lg font-medium mb-2">选择一个相册开始编辑</h3>
           <p className="text-sm">在左侧面板中选择现有相册或创建新相册</p>
@@ -745,15 +799,12 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
     );
   }
 
-  if (!page) {
+  if (!page || !canvasSize || !theme) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-100">
-        <div className="text-center text-gray-500">
-          <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <h3 className="text-lg font-medium mb-2">这个相册还没有页面</h3>
-          <p className="text-sm">在右侧面板中选择页面模板来创建第一页</p>
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+          <p className="text-gray-600">加载中...</p>
         </div>
       </div>
     );
@@ -878,10 +929,10 @@ const CanvasEditor: React.FC<CanvasEditorProps> = ({
         <div
           className="relative bg-white shadow-lg"
           style={{
-            width: album.canvasSize.width * 2 * canvasScale,
-            height: album.canvasSize.height * 2 * canvasScale,
-            backgroundColor: album.theme.backgroundColor,
-            backgroundImage: album.theme.backgroundGradient
+            width: canvasSize.width * 2 * canvasScale,
+            height: canvasSize.height * 2 * canvasScale,
+            backgroundColor: theme.backgroundColor,
+            backgroundImage: theme.backgroundGradient
           }}
         >
           {/* 网格背景 */}

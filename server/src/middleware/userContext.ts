@@ -22,33 +22,35 @@ declare global {
 
 /**
  * 用户上下文中间件
- * 从请求中提取用户信息并注入到req对象中
+ * 从session或请求中提取用户信息并注入到req对象中
  */
 export const userContextMiddleware = (req: Request, res: Response, next: NextFunction): void => {
   try {
-    // 多种方式获取用户ID的优先级：
-    // 1. Authorization Bearer token (将来实现JWT时使用)
-    // 2. X-User-Id 请求头
-    // 3. userId 查询参数
-
     let userId = '';
     
-    // 生产环境严格校验，开发环境需要显式传递用户信息
-
-    // 从请求头获取用户ID
-    const headerUserId = req.headers['x-user-id'] as string;
-    if (headerUserId && typeof headerUserId === 'string' && headerUserId.trim()) {
-      userId = headerUserId.trim();
+    // 优先级1：从session中获取用户ID（通过auth登录）
+    if (req.session?.user?.id) {
+      userId = req.session.user.id;
+    }
+    
+    // 优先级2：从请求头获取用户ID
+    if (!userId) {
+      const headerUserId = req.headers['x-user-id'] as string;
+      if (headerUserId && typeof headerUserId === 'string' && headerUserId.trim()) {
+        userId = headerUserId.trim();
+      }
     }
 
-    // 从查询参数获取用户ID（优先级较低）
-    const queryUserId = req.query.userId as string;
-    if (!headerUserId && queryUserId && typeof queryUserId === 'string' && queryUserId.trim()) {
-      userId = queryUserId.trim();
+    // 优先级3：从查询参数获取用户ID
+    if (!userId) {
+      const queryUserId = req.query.userId as string;
+      if (queryUserId && typeof queryUserId === 'string' && queryUserId.trim()) {
+        userId = queryUserId.trim();
+      }
     }
 
-    // 从请求体获取用户ID（仅对POST/PUT请求）
-    if (!headerUserId && !queryUserId && req.body && req.body.userId) {
+    // 优先级4：从请求体获取用户ID
+    if (!userId && req.body && req.body.userId) {
       const bodyUserId = req.body.userId;
       if (typeof bodyUserId === 'string' && bodyUserId.trim()) {
         userId = bodyUserId.trim();

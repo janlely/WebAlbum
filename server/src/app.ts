@@ -5,6 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
+import session from 'express-session';
 import * as dotenv from 'dotenv';
 import { DatabaseManager } from './database/factory';
 import { runAllMigrations } from './database/migrations';
@@ -38,6 +39,18 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Session配置
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'webalbum-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24小时
+  }
+}));
+
 // 静态文件服务 - 提供上传的图片
 app.use('/uploads', express.static('uploads'));
 
@@ -69,6 +82,7 @@ app.get('/api', (req, res) => {
     version: '1.0.0',
     endpoints: {
       health: '/health',
+      auth: '/api/auth',
       albums: '/api/albums',
       albumPages: '/api/albums/:albumId/pages',
       pages: '/api/pages',
@@ -93,9 +107,13 @@ import albumPageRoutes from './routes/albumPages';
 import pageTemplateRoutes from './routes/pageTemplates';
 import uploadRoutes from './routes/upload';
 import exportRoutes from './routes/export';
+import authRoutes from './routes/auth';
 
 // 应用用户上下文中间件到所有API路由
 app.use('/api', userContextMiddleware);
+
+// 认证路由（公开访问）
+app.use('/api/auth', authRoutes);
 
 // 相册路由需要用户认证
 app.use('/api/albums', requireUserMiddleware, albumRoutes);

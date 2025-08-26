@@ -28,6 +28,8 @@ export interface PageListQuery {
   userId: string;
   sortBy?: string;
   sortOrder?: 'ASC' | 'DESC';
+  page?: number;
+  pageSize?: number;
 }
 
 export class PageDAO {

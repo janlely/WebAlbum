@@ -105,41 +105,59 @@ export class AlbumDAO {
     tags?: string[];
     userId?: string;
   }): Promise<QueryResult<AlbumModel>> {
-    let sql = `
-      SELECT id, name, description, canvas_size_id as canvasSizeId, theme_id as themeId,
-             settings, page_count as pageCount, thumbnail, tags, category, user_id as userId,
-             created_at as createdAt, updated_at as updatedAt
-      FROM albums 
+      let sql = `
+      SELECT 
+        a.id, 
+        a.name, 
+        a.description, 
+        a.canvas_size_id as canvasSizeId, 
+        a.theme_id as themeId,
+        a.settings, 
+        a.page_count as pageCount, 
+        a.thumbnail, 
+        a.tags, 
+        a.category, 
+        a.user_id as userId,
+        a.created_at as createdAt, 
+        a.updated_at as updatedAt,
+        cs.width as canvasWidth,
+        cs.height as canvasHeight,
+        cs.name as canvasName,
+        cs.description as canvasDescription
+      FROM albums a
+      LEFT JOIN canvas_sizes cs ON a.canvas_size_id = cs.id
       WHERE 1=1
     `;
     
     const params: any[] = [];
     
-    // 用户过滤（必需）
+    // 用户过滤（必需）- 使用表别名避免歧义
     if (options.userId) {
-      sql += ' AND user_id = ?';
+      sql += ' AND a.user_id = ?';
       params.push(options.userId);
     }
     
     // 搜索条件
     if (options.search) {
-      sql += ' AND (name LIKE ? OR description LIKE ?)';
+      sql += ' AND (a.name LIKE ? OR a.description LIKE ?)';
       params.push(`%${options.search}%`, `%${options.search}%`);
     }
     
     if (options.category) {
-      sql += ' AND category = ?';
+      sql += ' AND a.category = ?';
       params.push(options.category);
     }
     
     if (options.tags && options.tags.length > 0) {
-      const tagConditions = options.tags.map(() => 'tags LIKE ?').join(' OR ');
+      const tagConditions = options.tags.map(() => 'a.tags LIKE ?').join(' OR ');
       sql += ` AND (${tagConditions})`;
       options.tags.forEach(tag => params.push(`%"${tag}"%`));
     }
     
-    // 排序
-    const sortBy = options.sortBy || 'updated_at';
+    // 排序 - 自动为字段添加表别名避免歧义
+    const sortBy = options.sortBy ? 
+      (options.sortBy.includes('.') ? options.sortBy : `a.${options.sortBy}`) : 
+      'a.updated_at';
     const sortOrder = options.sortOrder || 'DESC';
     sql += ` ORDER BY ${sortBy} ${sortOrder}`;
     
@@ -151,27 +169,27 @@ export class AlbumDAO {
     const data = await this.db.query(sql, params);
     
     // 获取总数
-    let countSql = 'SELECT COUNT(*) as total FROM albums WHERE 1=1';
+    let countSql = 'SELECT COUNT(*) as total FROM albums a WHERE 1=1';
     const countParams: any[] = [];
     
-    // 用户过滤（必需）
+    // 用户过滤（必需）- 使用表别名避免歧义
     if (options.userId) {
-      countSql += ' AND user_id = ?';
+      countSql += ' AND a.user_id = ?';
       countParams.push(options.userId);
     }
     
     if (options.search) {
-      countSql += ' AND (name LIKE ? OR description LIKE ?)';
+      countSql += ' AND (a.name LIKE ? OR a.description LIKE ?)';
       countParams.push(`%${options.search}%`, `%${options.search}%`);
     }
     
     if (options.category) {
-      countSql += ' AND category = ?';
+      countSql += ' AND a.category = ?';
       countParams.push(options.category);
     }
     
     if (options.tags && options.tags.length > 0) {
-      const tagConditions = options.tags.map(() => 'tags LIKE ?').join(' OR ');
+      const tagConditions = options.tags.map(() => 'a.tags LIKE ?').join(' OR ');
       countSql += ` AND (${tagConditions})`;
       options.tags.forEach(tag => countParams.push(`%"${tag}"%`));
     }
@@ -343,12 +361,23 @@ export class AlbumDAO {
 
   // 映射数据库行到模型
   private mapRowToModel(row: any): AlbumModel {
+    // 如果有画布尺寸信息，构建canvasSize对象
+    const canvasSize = row.canvasWidth && row.canvasHeight ? {
+      id: row.canvasSizeId,
+      width: row.canvasWidth,
+      height: row.canvasHeight,
+      name: row.canvasName || '',
+      description: row.canvasDescription || '',
+      aspectRatio: (row.canvasWidth / row.canvasHeight).toFixed(2)
+    } : undefined;
+
     return {
       id: row.id,
       name: row.name,
       description: row.description,
       canvasSizeId: row.canvasSizeId,
       themeId: row.themeId,
+      canvasSize: canvasSize, // 添加canvasSize对象
       settings: row.settings,
       pageCount: row.pageCount,
       thumbnail: row.thumbnail,

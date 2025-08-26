@@ -2,6 +2,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { albumService, AlbumListQuery } from '../services/AlbumService';
+import { pageService } from '../services/PageService';
 import { CreateAlbumRequest, UpdateAlbumRequest } from '../models/AlbumDAO';
 
 export class AlbumController {
@@ -24,29 +25,6 @@ export class AlbumController {
       res.status(201).json({
         success: true,
         message: '相册创建成功',
-        data: album
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  // 获取相册详情
-  async getAlbum(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const { id } = req.params;
-      const album = await albumService.getAlbumById(id, req.userId);
-
-      if (!album) {
-        res.status(404).json({
-          success: false,
-          message: '相册不存在或无访问权限'
-        });
-        return;
-      }
-
-      res.json({
-        success: true,
         data: album
       });
     } catch (error) {
@@ -171,6 +149,30 @@ export class AlbumController {
   }
 
   // 获取相册统计
+  // 获取相册详情
+  async getAlbum(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const album = await albumService.getAlbumById(id, req.userId);
+
+      if (!album) {
+        res.status(404).json({
+          success: false,
+          message: '相册不存在或无访问权限'
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: album
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // 获取相册统计
   async getAlbumStats(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const stats = await albumService.getAlbumStats(req.userId);
@@ -178,6 +180,21 @@ export class AlbumController {
       res.json({
         success: true,
         data: stats
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+  
+  // 获取相册页面数据
+  async getAlbumPages(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { albumId } = req.params;
+      const pages = await pageService.getPagesByAlbumId(albumId, req.userId);
+
+      res.json({
+        success: true,
+        data: pages
       });
     } catch (error) {
       next(error);

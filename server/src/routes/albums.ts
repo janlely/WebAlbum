@@ -27,4 +27,7 @@ router.put('/:id', userContextMiddleware, requireUserMiddleware, albumController
 // 删除相册
 router.delete('/:id', userContextMiddleware, requireUserMiddleware, albumController.deleteAlbum.bind(albumController));
 
+// 获取相册页面数据
+router.get('/:albumId/pages', userContextMiddleware, requireUserMiddleware, albumController.getAlbumPages.bind(albumController));
+
 export default router;

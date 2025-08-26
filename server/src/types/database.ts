@@ -80,6 +80,14 @@ export interface AlbumModel extends BaseModel {
   tags?: string; // JSON string array
   category?: string;
   userId: string; // 新增用户ID字段
+  canvasSize?: {
+    id: string;
+    width: number;
+    height: number;
+    name: string;
+    description?: string;
+    aspectRatio?: string;
+  };
 }
 
 // 页面模型

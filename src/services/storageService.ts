@@ -84,7 +84,13 @@ export class StorageService {
 
   static async getAlbumPages(albumId: string): Promise<AlbumPage[]> {
     try {
-      return await apiService.getAlbumPages(albumId);
+      // 使用新的API接口获取相册页面
+      const response = await apiService.get(`/albums/${albumId}/pages`);
+      if (response.success) {
+        return response.data || [];
+      } else {
+        throw new Error(response.message || '获取相册页面失败');
+      }
     } catch (error) {
       console.error('获取相册页面失败:', error);
       throw new Error('获取相册页面失败');
@@ -152,7 +158,8 @@ export class StorageService {
 
   static async getPageTemplate(templateId: string) {
     try {
-      return await apiService.getPageTemplate(templateId);
+      const templates = await apiService.getPageTemplates();
+      return templates.find(t => t.id === templateId) || null;
     } catch (error) {
       console.error('获取页面模板失败:', error);
       return null;

@@ -3,6 +3,17 @@ import { UserDAO } from '../models/UserDAO';
 import bcrypt from 'bcrypt';
 import { DatabaseManager } from '../database/factory';
 
+// 扩展Express的Session类型
+declare module 'express-session' {
+  interface SessionData {
+    user: {
+      id: string;
+      username: string;
+      email?: string;
+    };
+  }
+}
+
 const router = Router();
 
 // 用户登录
@@ -33,10 +44,10 @@ router.post('/login', async (req, res) => {
       email: user.email
     };
 
-    res.json({ message: '登录成功', user: req.session.user });
+    return res.json({ success: true, message: '登录成功', data: { user: req.session.user } });
   } catch (error) {
     console.error('登录错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    return res.status(500).json({ error: '服务器错误' });
   }
 });
 
@@ -44,19 +55,19 @@ router.post('/login', async (req, res) => {
 router.post('/logout', (req, res) => {
   req.session.destroy(err => {
     if (err) {
-      return res.status(500).json({ error: '注销失败' });
+      return res.status(500).json({ success: false, message: '注销失败' });
     }
     res.clearCookie('connect.sid');
-    res.json({ message: '注销成功' });
+    return res.json({ success: true, message: '注销成功' });
   });
 });
 
 // 获取当前用户
 router.get('/me', (req, res) => {
   if (!req.session.user) {
-    return res.status(401).json({ error: '未登录' });
+    return res.status(401).json({ success: false, message: '未登录' });
   }
-  res.json(req.session.user);
+  return res.json({ success: true, data: req.session.user });
 });
 
 export default router;

@@ -1,21 +1,25 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from './Header';
 import HeroSection from './HeroSection';
 import HowItWorks from './HowItWorks';
 import Footer from './Footer';
 
-interface HomePageProps {
-  onStartCreating: () => void;
-}
+const HomePage: React.FC = () => {
+  const navigate = useNavigate();
 
-const HomePage: React.FC<HomePageProps> = ({ onStartCreating }) => {
+  const handleStartCreating = () => {
+    console.log('开始创建照片书');
+    navigate('/studio');
+  };
+
   return (
     <div className="min-h-screen bg-white">
       {/* 头部导航 */}
       <Header />
       
       {/* 英雄区域 */}
-      <HeroSection onGetStarted={onStartCreating} />
+      <HeroSection onGetStarted={handleStartCreating} />
       
       {/* 使用步骤 */}
       <HowItWorks />

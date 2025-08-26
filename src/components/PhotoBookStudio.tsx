@@ -1,6 +1,7 @@
 // 新的照片书工作室 - 三栏布局专业编辑器
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { StorageService } from '../services/storageService';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { generateUUID } from '../utils/uuid';
@@ -19,11 +20,9 @@ import ProjectPanel from './studio/ProjectPanel';
 import CanvasEditor from './studio/CanvasEditor';
 import ToolPanel from './studio/ToolPanel';
 
-interface PhotoBookStudioProps {
-  onBackToHome: () => void;
-}
-
-const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
+const PhotoBookStudio: React.FC = () => {
+  const navigate = useNavigate();
+  
   // 主要状态
   const [albums, setAlbums] = useState<Album[]>([]);
   const [currentAlbum, setCurrentAlbum] = useState<Album | null>(null);
@@ -131,7 +130,8 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
   // 选择相册
   const selectAlbum = useCallback(async (albumId: string) => {
     try {
-      const album = await StorageService.getAlbum(albumId);
+      // 直接从albums状态中获取相册数据
+      const album = albums.find(a => a.id === albumId);
       if (!album) return;
       
       const pages = await StorageService.getAlbumPages(albumId);
@@ -159,7 +159,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
     } catch (error) {
       console.error('选择相册失败:', error);
     }
-  }, []);
+  }, [albums]);
 
   // 选择页面
   const selectPage = useCallback(async (pageId: string) => {
@@ -181,27 +181,71 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
   // 创建新相册
   const createNewAlbum = useCallback(async (albumData: Partial<Album>) => {
     try {
-
+      // 确保canvasSizeId有值（使用默认值）
+      const { apiService } = await import('../services/apiService');
+      let canvasSizeId = albumData.canvasSizeId;
       
-      let newAlbum: Album;
+      // 如果未提供canvasSizeId，获取默认值
+      if (!canvasSizeId) {
+        try {
+          console.log('尝试获取画布尺寸列表...');
+          const canvasSizes = await apiService.getCanvasSizes();
+          console.log('获取到的画布尺寸列表:', canvasSizes);
+          
+          if (canvasSizes.length > 0) {
+            canvasSizeId = canvasSizes[0].id;
+            console.log('使用第一个画布尺寸ID:', canvasSizeId);
+          } else {
+            console.warn('画布尺寸列表为空');
+          }
+        } catch (error) {
+          console.error('获取画布尺寸失败:', error);
+        }
+      }
       
-      // 让后端生成ID和其他字段
-          const albumToCreate = {
-            name: albumData.name || '新相册',
-            description: albumData.description || '',
-            canvasSizeId: albumData.canvasSize?.id || '',
-            themeId: albumData.theme?.id || '',
-            settings: JSON.stringify({
-              showGrid: true,
-              snapToGrid: true,
-              gridSize: 10
-            }),
-            tags: JSON.stringify([]),
-            category: 'default'
-          };
-        
-        // 调用StorageService，它会自动使用API并返回创建的相册
-        const savedAlbum = await StorageService.saveAlbum(albumToCreate as Album);
+      // 确保canvasSizeId有值，否则使用硬编码默认值
+      if (!canvasSizeId) {
+        canvasSizeId = 'default_canvas_size';
+        console.warn('使用默认画布尺寸ID');
+      }
+      
+      let themeId = albumData.themeId;
+      // 如果未提供themeId，尝试获取默认主题
+      if (!themeId) {
+        try {
+          console.log('尝试获取主题列表...');
+          const themes = await apiService.getThemes();
+          console.log('获取到的主题列表:', themes);
+          
+          if (themes.length > 0) {
+            themeId = themes[0].id;
+            console.log('使用第一个主题ID:', themeId);
+          } else {
+            console.warn('主题列表为空');
+            themeId = 'default_theme';
+          }
+        } catch (error) {
+          console.error('获取主题失败:', error);
+          themeId = 'default_theme';
+        }
+      }
+      
+      const albumToCreate = {
+        name: albumData.name || '新相册',
+        description: albumData.description || '',
+        canvasSizeId: canvasSizeId, // 使用有效值
+        themeId: albumData.themeId || '',
+        settings: JSON.stringify({
+          showGrid: true,
+          snapToGrid: true,
+          gridSize: 10
+        }),
+        tags: [],
+        category: 'default'
+      };
+      
+      // 调用StorageService，它会自动使用API并返回创建的相册
+      const savedAlbum = await StorageService.saveAlbum(albumToCreate as any);
         
         // 重新加载相册列表以获取最新数据
         const updatedAlbums = await StorageService.getAlbums();
@@ -245,7 +289,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       
       console.log('新页面创建成功');
     } catch (error) {
-      console.error('创建页面失败:', error);
+      console.error('创建页面失败', error);
       // 错误已在console.error中记录
     }
   }, [currentAlbum, albumPages]);
@@ -272,7 +316,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       
       console.log('模板应用成功');
     } catch (error) {
-      console.error('应用模板失败:', error);
+      console.error('应用模板失败', error);
       // 错误已在console.error中记录
     }
   }, [currentPage]);
@@ -336,7 +380,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
         
         setEditorState(prev => ({ ...prev, lastSaveTime: Date.now() }));
       } catch (error) {
-        console.error('自动保存失败:', error);
+        console.error('自动保存失败', error);
         throw error;
       } finally {
         setIsSaving(false);
@@ -375,7 +419,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       
       console.log('相册删除成功');
     } catch (error) {
-      console.error('删除相册失败:', error);
+      console.error('删除相册失败', error);
       // 错误已在console.error中记录
     }
   }, [albums, currentAlbum, selectAlbum]);
@@ -402,7 +446,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       
       console.log('页面删除成功');
     } catch (error) {
-      console.error('删除页面失败:', error);
+      console.error('删除页面失败', error);
       // 错误已在console.error中记录
     }
   }, [albumPages, currentPage]);
@@ -413,12 +457,12 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       const originalAlbum = await StorageService.getAlbum(albumId);
       if (!originalAlbum) return;
       
-      // 创建副本（让后端生成新的UUID）
+      // 创建副本（使用后端API期望的字段）
       const albumData = {
         name: `${originalAlbum.name} - 副本`,
         description: originalAlbum.description,
-        canvasSize: originalAlbum.canvasSize,
-        theme: originalAlbum.theme,
+        canvasSizeId: originalAlbum.canvasSizeId,
+        themeId: originalAlbum.themeId,
         settings: originalAlbum.settings,
         tags: originalAlbum.tags,
         category: originalAlbum.category
@@ -443,7 +487,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       setAlbums(prev => [newAlbum, ...prev]);
       console.log('相册复制成功');
     } catch (error) {
-      console.error('复制相册失败:', error);
+      console.error('复制相册失败', error);
       // 错误已在console.error中记录
     }
   }, []);
@@ -470,7 +514,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       setAlbumPages(updatedPages);
       console.log('页面复制成功');
     } catch (error) {
-      console.error('复制页面失败:', error);
+      console.error('复制页面失败', error);
       // 错误已在console.error中记录
     }
   }, [albumPages, currentAlbum]);
@@ -496,7 +540,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       
       console.log('相册重命名成功');
     } catch (error) {
-      console.error('重命名相册失败:', error);
+      console.error('重命名相册失败', error);
       // 错误已在console.error中记录
     }
   }, [currentAlbum]);
@@ -522,7 +566,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       
       console.log('页面重命名成功');
     } catch (error) {
-      console.error('重命名页面失败:', error);
+      console.error('重命名页面失败', error);
       // 错误已在console.error中记录
     }
   }, [currentPage]);
@@ -540,7 +584,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       
       console.log('页面顺序已更新');
     } catch (error) {
-      console.error('重排序页面失败:', error);
+      console.error('重排序页面失败', error);
       // 错误已在console.error中记录
     }
   }, [currentAlbum]);
@@ -551,7 +595,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       const albumList = await StorageService.getAlbums();
       setAlbums(albumList);
     } catch (error) {
-      console.error('刷新相册列表失败:', error);
+      console.error('刷新相册列表失败', error);
     }
   }, []);
 
@@ -564,10 +608,14 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       console.log('导出相册:', currentAlbum.name);
       console.log('导出功能开发中...');
     } catch (error) {
-      console.error('导出失败:', error);
+      console.error('导出失败', error);
       // 错误已在console.error中记录
     }
   }, [currentAlbum]);
+
+  const handleBackToHome = () => {
+    navigate('/');
+  };
 
   return (
     <div className="h-full w-full bg-gray-50 flex flex-col">
@@ -575,7 +623,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center flex-shrink-0">
         <div className="flex items-center space-x-4">
           <button
-            onClick={onBackToHome}
+            onClick={handleBackToHome}
             className="flex items-center space-x-2 px-3 py-2 text-gray-600 hover:text-gray-900 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -592,7 +640,7 @@ const PhotoBookStudio: React.FC<PhotoBookStudioProps> = ({ onBackToHome }) => {
             </h1>
             {currentPage && (
               <p className="text-sm text-gray-500">
-                {currentPage.name} • {currentAlbum?.canvasSize.name}
+                {currentPage.name} • {currentAlbum?.canvasSizeId || '默认尺寸'}
               </p>
             )}
           </div>

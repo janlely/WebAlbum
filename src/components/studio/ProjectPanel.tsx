@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import type { Album, AlbumPage, ProjectPanelState, CanvasSize, Theme } from '../../types';
-import { defaultCanvasSizes, defaultThemes } from '../../types';
 import { StorageService } from '../../services/storageService';
+import { apiService } from '../../services/apiService';
 
 interface ProjectPanelProps {
   albums: Album[];
@@ -64,11 +64,13 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
     name: string;
   } | null>(null);
   
+  const [canvasSizes, setCanvasSizes] = useState<CanvasSize[]>([]);
+  const [themes, setThemes] = useState<Theme[]>([]);
   const [newAlbumData, setNewAlbumData] = useState({
     name: '',
     description: '',
-    canvasSize: defaultCanvasSizes[0],
-    theme: defaultThemes[0]
+    canvasSize: null as CanvasSize | null,
+    theme: null as Theme | null
   });
 
   // 切换相册展开状态
@@ -86,12 +88,20 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
   const handleCreateAlbum = () => {
     if (!newAlbumData.name.trim()) return;
     
-    onCreateAlbum(newAlbumData);
+    // 只传递ID而不是整个对象
+    const albumData = {
+      name: newAlbumData.name,
+      description: newAlbumData.description,
+      canvasSizeId: newAlbumData.canvasSize?.id || '',
+      themeId: newAlbumData.theme?.id || ''
+    };
+    
+    onCreateAlbum(albumData);
     setNewAlbumData({
       name: '',
       description: '',
-      canvasSize: defaultCanvasSizes[0],
-      theme: defaultThemes[0]
+      canvasSize: canvasSizes.length > 0 ? canvasSizes[0] : null,
+      theme: themes.length > 0 ? themes[0] : null
     });
     setShowNewAlbumForm(false);
   };
@@ -227,6 +237,39 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [contextMenu]);
+
+  // 获取画布尺寸和主题
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // 获取画布尺寸
+        const sizes = await apiService.getCanvasSizes();
+        setCanvasSizes(sizes);
+        
+        // 获取主题
+        const themeData = await apiService.getThemes();
+        setThemes(themeData);
+        
+        // 设置默认值
+        if (sizes.length > 0 && !newAlbumData.canvasSize) {
+          setNewAlbumData(prev => ({
+            ...prev,
+            canvasSize: sizes[0]
+          }));
+        }
+        if (themeData.length > 0 && !newAlbumData.theme) {
+          setNewAlbumData(prev => ({
+            ...prev,
+            theme: themeData[0]
+          }));
+        }
+      } catch (error) {
+        console.error('获取数据失败:', error);
+      }
+    };
+    
+    fetchData();
+  }, []);
 
   // 过滤和排序相册
   const filteredAndSortedAlbums = albums
@@ -483,18 +526,23 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
                   画布尺寸
                 </label>
                 <select
-                  value={newAlbumData.canvasSize.id}
+                  value={newAlbumData.canvasSize?.id || ''}
                   onChange={(e) => {
-                    const size = defaultCanvasSizes.find(s => s.id === e.target.value);
+                    const size = canvasSizes.find(s => s.id === e.target.value);
                     if (size) setNewAlbumData({ ...newAlbumData, canvasSize: size });
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={canvasSizes.length === 0}
                 >
-                  {defaultCanvasSizes.map((size) => (
-                    <option key={size.id} value={size.id}>
-                      {size.name} ({size.aspectRatio})
-                    </option>
-                  ))}
+                  {canvasSizes.length > 0 ? (
+                    canvasSizes.map((size) => (
+                      <option key={size.id} value={size.id}>
+                        {size.name} ({size.width}x{size.height})
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">加载中...</option>
+                  )}
                 </select>
               </div>
               
@@ -503,18 +551,23 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
                   设计风格
                 </label>
                 <select
-                  value={newAlbumData.theme.id}
+                  value={newAlbumData.theme?.id || ''}
                   onChange={(e) => {
-                    const theme = defaultThemes.find(t => t.id === e.target.value);
+                    const theme = themes.find(t => t.id === e.target.value);
                     if (theme) setNewAlbumData({ ...newAlbumData, theme });
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={themes.length === 0}
                 >
-                  {defaultThemes.map((theme) => (
-                    <option key={theme.id} value={theme.id}>
-                      {theme.name}
-                    </option>
-                  ))}
+                  {themes.length > 0 ? (
+                    themes.map((theme) => (
+                      <option key={theme.id} value={theme.id}>
+                        {theme.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">加载中...</option>
+                  )}
                 </select>
               </div>
             </div>
